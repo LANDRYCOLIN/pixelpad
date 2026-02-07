@@ -1,0 +1,43 @@
+﻿/** index.scss **/
+page {
+  height: 100vh;
+  background: #232323;
+}
+
+.launch {
+  min-height: 100vh;
+  padding: 32rpx;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.frame {
+  width: 100%;
+  height: 100%;
+  border-radius: 40rpx;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24rpx;
+}
+
+.logo {
+  width: 200rpx;
+  height: auto;
+}
+
+.wordmark {
+  color: #b49cff;
+  font-size: 48rpx;
+  font-weight: 600;
+  letter-spacing: 6rpx;
+}

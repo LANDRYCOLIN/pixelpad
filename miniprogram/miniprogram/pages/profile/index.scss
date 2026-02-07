@@ -1,0 +1,174 @@
+﻿/** profile/index.scss **/
+page {
+  background: #212020;
+  color: #ffffff;
+}
+
+.page {
+  min-height: 100vh;
+  background: #212020;
+}
+
+.header {
+  background: #b7a2ff;
+  padding: 32rpx 32rpx 24rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.title {
+  align-self: flex-start;
+  font-family: "OPPO Sans 4.0";
+  font-size: 40rpx;
+  font-weight: 700;
+  line-height: 46rpx;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  height: 46rpx;
+  text-transform: capitalize;
+}
+
+.avatar {
+  width: 250rpx;
+  height: 250rpx;
+  margin-top: 24rpx;
+  background: #ffffff;
+  border-radius: 200rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.avatar__img {
+  width: 150rpx;
+  height: 150rpx;
+}
+
+.name {
+  font-family: "Outfit";
+  font-weight: 700;
+  font-size: 40rpx;
+  line-height: 50rpx;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  text-transform: capitalize;
+}
+
+.email {
+  font-family: "Outfit";
+  font-weight: 300;
+  font-size: 26rpx;
+  line-height: 32rpx;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  text-transform: lowercase;
+}
+
+.birthday {
+  font-family: "OPPO Sans 4.0";
+  font-weight: 600;
+  font-size: 26rpx;
+  line-height: 30rpx;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  text-transform: capitalize;
+}
+
+.stats {
+  width: 90%;
+  margin-top: 18rpx;
+  height: 120rpx;
+  background: #896cfe;
+  border-radius: 20rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 28rpx;
+  box-sizing: border-box;
+  color: #ffffff;
+  text-align: center;
+  transform: translateY(50%);
+}
+
+.stats__item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6rpx;
+}
+
+.stats__value {
+  font-size: 28rpx;
+  font-weight: 700;
+  line-height: 32rpx;
+}
+
+.stats__label {
+  font-size: 22rpx;
+  font-weight: 400;
+  line-height: 26rpx;
+}
+
+.stats__divider {
+  width: 2rpx;
+  height: 64rpx;
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.menu {
+  padding: 92rpx 32rpx 160rpx;
+}
+
+.menu__item {
+  height: 120rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24rpx;
+  gap: 24rpx;
+  box-sizing: border-box;
+}
+
+.menu__icon {
+  width: 64rpx;
+  height: 64rpx;
+  border-radius: 50%;
+  background: #896cfe;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.menu__icon-img {
+  width: 36rpx;
+  height: 36rpx;
+}
+
+.menu__text {
+  flex: 1;
+  font-family: "OPPO Sans 4.0";
+  font-weight: 400;
+  font-size: 40rpx;
+  line-height: 46rpx;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  text-transform: capitalize;
+}
+
+.menu__arrow {
+  width: 0;
+  height: 0;
+  border-top: 10rpx solid transparent;
+  border-bottom: 10rpx solid transparent;
+  border-left: 14rpx solid #f1f27a;
+  flex-shrink: 0;
+}

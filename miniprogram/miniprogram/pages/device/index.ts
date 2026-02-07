@@ -1,0 +1,2 @@
+﻿// device/index.ts
+Component({})

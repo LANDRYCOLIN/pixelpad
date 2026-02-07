@@ -1,0 +1,59 @@
+{
+  "pages": [
+    "pages/index/index",
+    "pages/home/index",
+    "pages/make/index",
+    "pages/device/index",
+    "pages/profile/index",
+    "pages/logs/logs"
+  ],
+  "window": {
+    "navigationBarTextStyle": "black",
+    "navigationStyle": "custom"
+  },
+  "style": "v2",
+  "rendererOptions": {
+    "skyline": {
+      "defaultDisplayBlock": true,
+      "defaultContentBox": true,
+      "disableABTest": true,
+      "sdkVersionBegin": "3.0.0",
+      "sdkVersionEnd": "15.255.255"
+    }
+  },
+  "componentFramework": "glass-easel",
+  "tabBar": {
+    "color": "#C6B7FF",
+    "selectedColor": "#FFFFFF",
+    "backgroundColor": "#B7A2FF",
+    "borderStyle": "black",
+    "list": [
+      {
+        "pagePath": "pages/home/index",
+        "text": "主页",
+        "iconPath": "assets/tabbar/home.png",
+        "selectedIconPath": "assets/tabbar/home.png"
+      },
+      {
+        "pagePath": "pages/make/index",
+        "text": "图片制作",
+        "iconPath": "assets/tabbar/make.png",
+        "selectedIconPath": "assets/tabbar/make.png"
+      },
+      {
+        "pagePath": "pages/device/index",
+        "text": "设备管理",
+        "iconPath": "assets/tabbar/device.png",
+        "selectedIconPath": "assets/tabbar/device.png"
+      },
+      {
+        "pagePath": "pages/profile/index",
+        "text": "个人中心",
+        "iconPath": "assets/tabbar/profile.png",
+        "selectedIconPath": "assets/tabbar/profile.png"
+      }
+    ]
+  },
+  "sitemapLocation": "sitemap.json",
+  "lazyCodeLoading": "requiredComponents"
+}

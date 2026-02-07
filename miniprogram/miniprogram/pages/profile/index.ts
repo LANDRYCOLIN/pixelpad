@@ -1,0 +1,2 @@
+﻿// profile/index.ts
+Component({})

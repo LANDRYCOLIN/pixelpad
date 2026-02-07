@@ -1,0 +1,4 @@
+﻿<!-- home/index.wxml -->
+<view class="page">
+  <text class="title">主页</text>
+</view>

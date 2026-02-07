@@ -1,0 +1,9 @@
+﻿<!--index.wxml-->
+<view class="launch" bindtap="goHome">
+  <view class="frame">
+    <view class="brand">
+      <image wx:if="{{logoSrc}}" class="logo" src="{{logoSrc}}" mode="widthFix"></image>
+      <text class="wordmark">PIXELPAD</text>
+    </view>
+  </view>
+</view>

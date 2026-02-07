@@ -1,0 +1,2 @@
+﻿// make/index.ts
+Component({})

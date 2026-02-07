@@ -1,0 +1,23 @@
+﻿/** device/index.scss **/
+page {
+  background: #212020;
+  color: #ffffff;
+}
+
+.page {
+  min-height: 100vh;
+  padding: 32rpx;
+  box-sizing: border-box;
+}
+
+.title {
+  font-family: "OPPO Sans 4.0";
+  font-size: 40rpx;
+  font-weight: 700;
+  line-height: 46rpx;
+  color: #896cfe;
+  display: flex;
+  align-items: center;
+  height: 46rpx;
+  text-transform: capitalize;
+}

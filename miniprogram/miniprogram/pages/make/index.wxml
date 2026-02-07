@@ -1,0 +1,4 @@
+﻿<!-- make/index.wxml -->
+<view class="page">
+  <text class="title">图片制作</text>
+</view>
