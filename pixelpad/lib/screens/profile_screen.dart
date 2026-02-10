@@ -1,14 +1,41 @@
 ﻿import 'package:flutter/material.dart';
 
+import '../data/profile_data.dart';
+import '../data/profile_repository.dart';
 import '../theme/app_theme.dart';
 import '../widgets/profile_menu_item.dart';
 import 'profile_edit_screen.dart';
 
-class ProfileScreen extends StatelessWidget {
+class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
 
   @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
+  final ProfileRepository _repository = ProfileRepository();
+  ProfileData? _profile;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProfile();
+  }
+
+  Future<void> _loadProfile() async {
+    final data = await _repository.fetchProfile();
+    if (!mounted) {
+      return;
+    }
+    setState(() => _profile = data);
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final profile = _profile ?? ProfileData.initial();
+    final age = _calculateAge(profile.birthday);
+
     return Container(
       color: AppColors.background,
       child: SafeArea(
@@ -17,13 +44,17 @@ class ProfileScreen extends StatelessWidget {
             children: [
               Stack(
                 clipBehavior: Clip.none,
-                children: const [
-                  _HeaderSection(),
+                children: [
+                  _HeaderSection(profile: profile),
                   Positioned(
                     left: 20,
                     right: 20,
                     bottom: -36,
-                    child: _StatsCard(),
+                    child: _StatsCard(
+                      mbti: profile.mbti,
+                      age: age,
+                      location: '重庆',
+                    ),
                   ),
                 ],
               ),
@@ -35,12 +66,16 @@ class ProfileScreen extends StatelessWidget {
                     ProfileMenuItem(
                       iconAsset: 'assets/profile/icon-user.svg',
                       label: '个人信息',
-                      onTap: () {
-                        Navigator.of(context).push(
+                      onTap: () async {
+                        final result = await Navigator.of(context).push<ProfileData>(
                           MaterialPageRoute(
                             builder: (_) => const ProfileEditScreen(),
                           ),
                         );
+                        if (!mounted || result == null) {
+                          return;
+                        }
+                        setState(() => _profile = result);
                       },
                     ),
                     const SizedBox(height: 8),
@@ -77,10 +112,23 @@ class ProfileScreen extends StatelessWidget {
       ),
     );
   }
+
+  int _calculateAge(DateTime birthday) {
+    final today = DateTime.now();
+    var age = today.year - birthday.year;
+    final beforeBirthday = today.month < birthday.month ||
+        (today.month == birthday.month && today.day < birthday.day);
+    if (beforeBirthday) {
+      age -= 1;
+    }
+    return age < 0 ? 0 : age;
+  }
 }
 
 class _HeaderSection extends StatelessWidget {
-  const _HeaderSection();
+  final ProfileData profile;
+
+  const _HeaderSection({required this.profile});
 
   @override
   Widget build(BuildContext context) {
@@ -107,28 +155,60 @@ class _HeaderSection extends StatelessWidget {
               shape: BoxShape.circle,
             ),
             child: Center(
-              child: Image.asset(
-                'assets/source/logo.png',
-                width: 72,
-                height: 72,
-                fit: BoxFit.contain,
-              ),
+              child: profile.avatarMode == ProfileAvatarMode.logo
+                  ? Image.asset(
+                      'assets/source/logo.png',
+                      width: 72,
+                      height: 72,
+                      fit: BoxFit.contain,
+                    )
+                  : Text(
+                      _initials(profile.name),
+                      style: const TextStyle(
+                        fontSize: 32,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.primary,
+                      ),
+                    ),
             ),
           ),
           const SizedBox(height: 12),
-          const Text('Pixel Pad', style: AppTextStyles.profileName),
+          Text(profile.name, style: AppTextStyles.profileName),
           const SizedBox(height: 4),
-          const Text('pixelpad@example.com', style: AppTextStyles.profileEmail),
+          Text(profile.email, style: AppTextStyles.profileEmail),
           const SizedBox(height: 4),
-          const Text('生日：11月15日', style: AppTextStyles.profileMeta),
+          Text(
+            '生日：${_formatBirthday(profile.birthday)}',
+            style: AppTextStyles.profileMeta,
+          ),
         ],
       ),
     );
   }
+
+  String _formatBirthday(DateTime birthday) {
+    return '${birthday.month}月${birthday.day}日';
+  }
+
+  String _initials(String name) {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) {
+      return 'P';
+    }
+    return trimmed.substring(0, 1).toUpperCase();
+  }
 }
 
 class _StatsCard extends StatelessWidget {
-  const _StatsCard();
+  final String mbti;
+  final int age;
+  final String location;
+
+  const _StatsCard({
+    required this.mbti,
+    required this.age,
+    required this.location,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -140,12 +220,12 @@ class _StatsCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
       ),
       child: Row(
-        children: const [
-          _StatItem(value: 'INFP', label: '人格'),
-          _StatDivider(),
-          _StatItem(value: '18', label: '年龄'),
-          _StatDivider(),
-          _StatItem(value: '重庆', label: '地区'),
+        children: [
+          _StatItem(value: mbti, label: '人格'),
+          const _StatDivider(),
+          _StatItem(value: age.toString(), label: '年龄'),
+          const _StatDivider(),
+          _StatItem(value: location, label: '地区'),
         ],
       ),
     );

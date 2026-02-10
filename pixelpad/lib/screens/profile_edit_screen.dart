@@ -1,6 +1,8 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../data/profile_data.dart';
+import '../data/profile_repository.dart';
 import '../theme/app_theme.dart';
 
 class ProfileEditScreen extends StatefulWidget {
@@ -11,18 +13,50 @@ class ProfileEditScreen extends StatefulWidget {
 }
 
 class _ProfileEditScreenState extends State<ProfileEditScreen> {
+  final ProfileRepository _repository = ProfileRepository();
   late final TextEditingController _nameController;
   late final TextEditingController _mbtiController;
   late final TextEditingController _emailController;
   late final TextEditingController _birthdayController;
 
+  ProfileAvatarMode _avatarMode = ProfileAvatarMode.logo;
+  DateTime _birthday = ProfileData.initial().birthday;
+  bool _loading = true;
+  bool _saving = false;
+
   @override
   void initState() {
     super.initState();
-    _nameController = TextEditingController(text: 'PixelPad');
-    _mbtiController = TextEditingController(text: 'INFP');
-    _emailController = TextEditingController(text: 'pixelpad@example.com');
-    _birthdayController = TextEditingController(text: '11月15日');
+    final initial = ProfileData.initial();
+    _nameController = TextEditingController(text: initial.name);
+    _mbtiController = TextEditingController(text: initial.mbti);
+    _emailController = TextEditingController(text: initial.email);
+    _birthdayController = TextEditingController(text: _formatBirthday(initial.birthday));
+    _avatarMode = initial.avatarMode;
+    _birthday = initial.birthday;
+    _nameController.addListener(() {
+      if (!mounted || _avatarMode != ProfileAvatarMode.initials) {
+        return;
+      }
+      setState(() {});
+    });
+    _loadProfile();
+  }
+
+  Future<void> _loadProfile() async {
+    final data = await _repository.fetchProfile();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _loading = false;
+      _avatarMode = data.avatarMode;
+      _birthday = data.birthday;
+      _nameController.text = data.name;
+      _mbtiController.text = data.mbti;
+      _emailController.text = data.email;
+      _birthdayController.text = _formatBirthday(data.birthday);
+    });
   }
 
   @override
@@ -70,10 +104,14 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                 ),
               ),
               const SizedBox(height: 24),
-              const _AvatarCard(),
+              _AvatarCard(
+                avatarMode: _avatarMode,
+                name: _nameController.text,
+                onTapEdit: _showAvatarPicker,
+              ),
               const SizedBox(height: 24),
               _FieldSection(
-                label: '用户名称',
+                label: '用户名',
                 controller: _nameController,
                 textInputAction: TextInputAction.next,
               ),
@@ -95,6 +133,8 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                 label: '生日',
                 controller: _birthdayController,
                 textInputAction: TextInputAction.done,
+                readOnly: true,
+                onTap: _pickBirthday,
               ),
               const SizedBox(height: 28),
               Center(
@@ -102,7 +142,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                   width: 173,
                   height: 47,
                   child: ElevatedButton(
-                    onPressed: () {},
+                    onPressed: _saving ? null : _saveProfile,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFFF9F871),
                       foregroundColor: const Color(0xFF232323),
@@ -114,15 +154,122 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                         height: 1.2,
                       ),
                     ),
-                    child: const Text('保存'),
+                    child: Text(_saving ? '保存中...' : '保存'),
                   ),
                 ),
               ),
+              if (_loading)
+                const Padding(
+                  padding: EdgeInsets.only(top: 12),
+                  child: Center(
+                    child: SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                  ),
+                ),
             ],
           ),
         ),
       ),
     );
+  }
+
+  Future<void> _pickBirthday() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _birthday,
+      firstDate: DateTime(1900, 1, 1),
+      lastDate: DateTime.now(),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: Theme.of(context).colorScheme.copyWith(
+              primary: AppColors.primary,
+              surface: AppColors.background,
+            ),
+          ),
+          child: child ?? const SizedBox.shrink(),
+        );
+      },
+    );
+    if (picked == null) {
+      return;
+    }
+    setState(() {
+      _birthday = picked;
+      _birthdayController.text = _formatBirthday(picked);
+    });
+  }
+
+  Future<void> _showAvatarPicker() async {
+    final result = await showModalBottomSheet<ProfileAvatarMode>(
+      context: context,
+      backgroundColor: const Color(0xFF2B2B2B),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) {
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                '选择头像样式',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.white,
+                ),
+              ),
+              const SizedBox(height: 12),
+              _AvatarOption(
+                title: '使用Logo头像',
+                onTap: () => Navigator.of(context).pop(ProfileAvatarMode.logo),
+              ),
+              const SizedBox(height: 8),
+              _AvatarOption(
+                title: '使用首字母头像',
+                onTap: () => Navigator.of(context).pop(ProfileAvatarMode.initials),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+
+    if (result == null) {
+      return;
+    }
+    setState(() => _avatarMode = result);
+  }
+
+  Future<void> _saveProfile() async {
+    setState(() => _saving = true);
+    final data = ProfileData(
+      name: _nameController.text.trim(),
+      mbti: _mbtiController.text.trim(),
+      email: _emailController.text.trim(),
+      birthday: _birthday,
+      avatarMode: _avatarMode,
+    );
+    await _repository.saveProfile(data);
+    if (!mounted) {
+      return;
+    }
+    setState(() => _saving = false);
+    Navigator.of(context).pop(data);
+  }
+
+  String _formatBirthday(DateTime date) {
+    return '${date.month}月${date.day}日';
   }
 }
 
@@ -167,7 +314,15 @@ class _BackButton extends StatelessWidget {
 }
 
 class _AvatarCard extends StatelessWidget {
-  const _AvatarCard();
+  final ProfileAvatarMode avatarMode;
+  final String name;
+  final VoidCallback onTapEdit;
+
+  const _AvatarCard({
+    required this.avatarMode,
+    required this.name,
+    required this.onTapEdit,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -189,34 +344,85 @@ class _AvatarCard extends StatelessWidget {
                 shape: BoxShape.circle,
               ),
               child: Center(
-                child: Image.asset(
-                  'assets/source/logo.png',
-                  width: 56,
-                  height: 56,
-                  fit: BoxFit.contain,
-                ),
+                child: avatarMode == ProfileAvatarMode.logo
+                    ? Image.asset(
+                        'assets/source/logo.png',
+                        width: 56,
+                        height: 56,
+                        fit: BoxFit.contain,
+                      )
+                    : Text(
+                        _initials(name),
+                        style: const TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.primary,
+                        ),
+                      ),
               ),
             ),
             Positioned(
               right: -6,
               bottom: -6,
-              child: Container(
-                width: 28,
-                height: 28,
-                decoration: const BoxDecoration(
-                  color: Color(0xFFF9F871),
-                  shape: BoxShape.circle,
-                ),
-                child: Center(
-                  child: SvgPicture.asset(
-                    'assets/profile/icon-edit.svg',
-                    width: 14,
-                    height: 18,
+              child: InkWell(
+                onTap: onTapEdit,
+                borderRadius: BorderRadius.circular(16),
+                child: Container(
+                  width: 28,
+                  height: 28,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFF9F871),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Center(
+                    child: SvgPicture.asset(
+                      'assets/profile/icon-edit.svg',
+                      width: 14,
+                      height: 18,
+                    ),
                   ),
                 ),
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  String _initials(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) {
+      return 'P';
+    }
+    return trimmed.substring(0, 1).toUpperCase();
+  }
+}
+
+class _AvatarOption extends StatelessWidget {
+  final String title;
+  final VoidCallback onTap;
+
+  const _AvatarOption({required this.title, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: const Color(0xFF3A3A3A),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Text(
+          title,
+          style: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+            color: AppColors.white,
+          ),
         ),
       ),
     );
@@ -228,12 +434,16 @@ class _FieldSection extends StatelessWidget {
   final TextEditingController controller;
   final TextInputAction textInputAction;
   final TextInputType? keyboardType;
+  final bool readOnly;
+  final VoidCallback? onTap;
 
   const _FieldSection({
     required this.label,
     required this.controller,
     required this.textInputAction,
     this.keyboardType,
+    this.readOnly = false,
+    this.onTap,
   });
 
   @override
@@ -254,6 +464,8 @@ class _FieldSection extends StatelessWidget {
           controller: controller,
           textInputAction: textInputAction,
           keyboardType: keyboardType,
+          readOnly: readOnly,
+          onTap: onTap,
           style: const TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.w500,
