@@ -2,6 +2,7 @@
 
 import '../theme/app_theme.dart';
 import '../widgets/profile_menu_item.dart';
+import 'profile_edit_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -30,33 +31,40 @@ class ProfileScreen extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
                 child: Column(
-                  children: const [
+                  children: [
                     ProfileMenuItem(
                       iconAsset: 'assets/profile/icon-user.svg',
                       label: '个人信息',
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const ProfileEditScreen(),
+                          ),
+                        );
+                      },
                     ),
-                    SizedBox(height: 8),
-                    ProfileMenuItem(
+                    const SizedBox(height: 8),
+                    const ProfileMenuItem(
                       iconAsset: 'assets/profile/icon-favorite.svg',
                       label: '收藏',
                     ),
-                    SizedBox(height: 8),
-                    ProfileMenuItem(
+                    const SizedBox(height: 8),
+                    const ProfileMenuItem(
                       iconAsset: 'assets/profile/icon-privacy.svg',
                       label: '隐私保护',
                     ),
-                    SizedBox(height: 8),
-                    ProfileMenuItem(
+                    const SizedBox(height: 8),
+                    const ProfileMenuItem(
                       iconAsset: 'assets/profile/icon-settings.svg',
                       label: '设置',
                     ),
-                    SizedBox(height: 8),
-                    ProfileMenuItem(
+                    const SizedBox(height: 8),
+                    const ProfileMenuItem(
                       iconAsset: 'assets/profile/icon-service.svg',
                       label: '客服',
                     ),
-                    SizedBox(height: 8),
-                    ProfileMenuItem(
+                    const SizedBox(height: 8),
+                    const ProfileMenuItem(
                       iconAsset: 'assets/profile/icon-logout.svg',
                       label: '退出账号',
                     ),
