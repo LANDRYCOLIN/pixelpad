@@ -49,6 +49,13 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
     if (!mounted) {
       return;
     }
+    if (data == null) {
+      setState(() {
+        _loading = false;
+        _currentProfile = null;
+      });
+      return;
+    }
     setState(() {
       _loading = false;
       _currentProfile = data;
@@ -144,7 +151,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                   width: 173,
                   height: 47,
                   child: ElevatedButton(
-                    onPressed: _saving ? null : _saveProfile,
+                    onPressed: _saving || _currentProfile == null ? null : _saveProfile,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFFF9F871),
                       foregroundColor: const Color(0xFF232323),
@@ -170,6 +177,19 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
                         color: AppColors.primary,
+                      ),
+                    ),
+                  ),
+                ),
+              if (!_loading && _currentProfile == null)
+                const Padding(
+                  padding: EdgeInsets.only(top: 12),
+                  child: Center(
+                    child: Text(
+                      '未登录，无法编辑资料',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Color(0xFFBFBFBF),
                       ),
                     ),
                   ),

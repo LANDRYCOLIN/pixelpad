@@ -1,12 +1,17 @@
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'user_profile.dart';
 
 abstract class UserDataSource {
   Future<UserProfile> fetchUser(int userId);
   Future<void> saveUser(UserProfile data);
+  Future<UserProfile> loginUser({
+    required String phone,
+    required String password,
+  });
   Future<UserProfile> registerUser({
     required String phone,
     required String password,
@@ -45,6 +50,23 @@ class MockBackendDataSource implements UserDataSource {
   }
 
   @override
+  Future<UserProfile> loginUser({
+    required String phone,
+    required String password,
+  }) async {
+    final response = await _client.post(
+      Uri.parse('$baseUrl/login'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'phone': phone, 'password': password}),
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Failed to login user ${response.statusCode}');
+    }
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    return UserProfile.fromMap(data);
+  }
+
+  @override
   Future<UserProfile> registerUser({
     required String phone,
     required String password,
@@ -65,18 +87,31 @@ class MockBackendDataSource implements UserDataSource {
 class UserRepository {
   UserRepository({
     UserDataSource? dataSource,
-    this.currentUserId = 1,
   }) : _dataSource = dataSource ?? MockBackendDataSource();
 
   final UserDataSource _dataSource;
-  final int currentUserId;
+  static const String _sessionUserIdKey = 'current_user_id_v1';
 
-  Future<UserProfile> fetchCurrentUser() async {
-    try {
-      return await _dataSource.fetchUser(currentUserId);
-    } catch (_) {
-      return UserProfile.initial();
+  Future<int?> getLoggedInUserId() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(_sessionUserIdKey);
+  }
+
+  Future<void> _setLoggedInUserId(int? userId) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (userId == null) {
+      await prefs.remove(_sessionUserIdKey);
+      return;
     }
+    await prefs.setInt(_sessionUserIdKey, userId);
+  }
+
+  Future<UserProfile?> fetchCurrentUser() async {
+    final userId = await getLoggedInUserId();
+    if (userId == null) {
+      return null;
+    }
+    return _dataSource.fetchUser(userId);
   }
 
   Future<void> saveCurrentUser(UserProfile data) async {
@@ -86,7 +121,22 @@ class UserRepository {
   Future<UserProfile> register({
     required String phone,
     required String password,
-  }) {
-    return _dataSource.registerUser(phone: phone, password: password);
+  }) async {
+    final user = await _dataSource.registerUser(phone: phone, password: password);
+    await _setLoggedInUserId(user.id);
+    return user;
+  }
+
+  Future<UserProfile> login({
+    required String phone,
+    required String password,
+  }) async {
+    final user = await _dataSource.loginUser(phone: phone, password: password);
+    await _setLoggedInUserId(user.id);
+    return user;
+  }
+
+  Future<void> logout() async {
+    await _setLoggedInUserId(null);
   }
 }

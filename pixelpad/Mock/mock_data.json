@@ -1,0 +1,15 @@
+{
+  "next_id": 2,
+  "users": {
+    "1": {
+      "id": 1,
+      "phone": "13800000000",
+      "username": "PixelPad",
+      "password": "123456",
+      "email": "pixelpad@example.com",
+      "birthday": "2006-11-15",
+      "mbti": "INFP",
+      "avatarMode": "logo"
+    }
+  }
+}

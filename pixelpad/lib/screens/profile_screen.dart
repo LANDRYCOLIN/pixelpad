@@ -5,6 +5,7 @@ import '../data/user_repository.dart';
 import '../theme/app_theme.dart';
 import '../widgets/profile_menu_item.dart';
 import 'profile_edit_screen.dart';
+import 'login_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -16,6 +17,7 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   final UserRepository _repository = UserRepository();
   UserProfile? _profile;
+  bool _loading = true;
 
   @override
   void initState() {
@@ -24,16 +26,37 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _loadProfile() async {
-    final data = await _repository.fetchCurrentUser();
+    UserProfile? data;
+    try {
+      data = await _repository.fetchCurrentUser();
+    } catch (_) {
+      data = null;
+    }
     if (!mounted) {
       return;
     }
-    setState(() => _profile = data);
+    setState(() {
+      _profile = data;
+      _loading = false;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    final profile = _profile ?? UserProfile.initial();
+    if (_loading) {
+      return const Center(
+        child: CircularProgressIndicator(
+          strokeWidth: 2,
+          color: AppColors.primary,
+        ),
+      );
+    }
+    if (_profile == null) {
+      return _LoggedOutState(
+        onLogin: _handleLogin,
+      );
+    }
+    final profile = _profile!;
     final age = _calculateAge(profile.birthday);
 
     return Container(
@@ -99,9 +122,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       label: '客服',
                     ),
                     const SizedBox(height: 8),
-                    const ProfileMenuItem(
+                    ProfileMenuItem(
                       iconAsset: 'assets/profile/icon-logout.svg',
                       label: '退出账号',
+                      onTap: _handleLogout,
                     ),
                   ],
                 ),
@@ -122,6 +146,141 @@ class _ProfileScreenState extends State<ProfileScreen> {
       age -= 1;
     }
     return age < 0 ? 0 : age;
+  }
+
+  Future<void> _handleLogin() async {
+    final result = await Navigator.of(context).push<UserProfile>(
+      MaterialPageRoute(
+        builder: (_) => const LoginScreen(),
+      ),
+    );
+    if (!mounted || result == null) {
+      return;
+    }
+    setState(() {
+      _profile = result;
+      _loading = false;
+    });
+  }
+
+  Future<void> _handleLogout() async {
+    await _repository.logout();
+    if (!mounted) {
+      return;
+    }
+    setState(() => _profile = null);
+  }
+}
+
+class _LoggedOutState extends StatelessWidget {
+  final VoidCallback onLogin;
+
+  const _LoggedOutState({required this.onLogin});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: AppColors.background,
+      child: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                '个人中心',
+                style: AppTextStyles.pageTitle,
+              ),
+              const SizedBox(height: 20),
+              Container(
+                padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
+                decoration: BoxDecoration(
+                  color: AppColors.header,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Column(
+                  children: [
+                    Container(
+                      width: 92,
+                      height: 92,
+                      decoration: const BoxDecoration(
+                        color: AppColors.white,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.person_outline,
+                        size: 42,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      '未登录',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    const Text(
+                      '登录后可查看与编辑个人信息',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w400,
+                        color: AppColors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: 160,
+                      height: 44,
+                      child: ElevatedButton(
+                        onPressed: onLogin,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFF9F871),
+                          foregroundColor: const Color(0xFF232323),
+                          shape: const StadiumBorder(),
+                          elevation: 0,
+                          textStyle: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        child: const Text('去登录'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF2A2A2A),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Row(
+                  children: const [
+                    Icon(Icons.lock_outline, color: AppColors.white, size: 20),
+                    SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        '安全提醒：请勿将密码告知他人。',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: AppColors.white,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 
