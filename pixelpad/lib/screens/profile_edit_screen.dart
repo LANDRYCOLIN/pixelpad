@@ -1,8 +1,8 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
-import '../data/profile_data.dart';
-import '../data/profile_repository.dart';
+import '../data/user_profile.dart';
+import '../data/user_repository.dart';
 import '../theme/app_theme.dart';
 
 class ProfileEditScreen extends StatefulWidget {
@@ -13,29 +13,30 @@ class ProfileEditScreen extends StatefulWidget {
 }
 
 class _ProfileEditScreenState extends State<ProfileEditScreen> {
-  final ProfileRepository _repository = ProfileRepository();
+  final UserRepository _repository = UserRepository();
   late final TextEditingController _nameController;
   late final TextEditingController _mbtiController;
   late final TextEditingController _emailController;
   late final TextEditingController _birthdayController;
 
-  ProfileAvatarMode _avatarMode = ProfileAvatarMode.logo;
-  DateTime _birthday = ProfileData.initial().birthday;
+  UserAvatarMode _avatarMode = UserAvatarMode.logo;
+  DateTime _birthday = UserProfile.initial().birthday;
+  UserProfile? _currentProfile;
   bool _loading = true;
   bool _saving = false;
 
   @override
   void initState() {
     super.initState();
-    final initial = ProfileData.initial();
-    _nameController = TextEditingController(text: initial.name);
+    final initial = UserProfile.initial();
+    _nameController = TextEditingController(text: initial.username);
     _mbtiController = TextEditingController(text: initial.mbti);
     _emailController = TextEditingController(text: initial.email);
     _birthdayController = TextEditingController(text: _formatBirthday(initial.birthday));
     _avatarMode = initial.avatarMode;
     _birthday = initial.birthday;
     _nameController.addListener(() {
-      if (!mounted || _avatarMode != ProfileAvatarMode.initials) {
+      if (!mounted || _avatarMode != UserAvatarMode.initials) {
         return;
       }
       setState(() {});
@@ -44,15 +45,16 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
   }
 
   Future<void> _loadProfile() async {
-    final data = await _repository.fetchProfile();
+    final data = await _repository.fetchCurrentUser();
     if (!mounted) {
       return;
     }
     setState(() {
       _loading = false;
+      _currentProfile = data;
       _avatarMode = data.avatarMode;
       _birthday = data.birthday;
-      _nameController.text = data.name;
+      _nameController.text = data.username;
       _mbtiController.text = data.mbti;
       _emailController.text = data.email;
       _birthdayController.text = _formatBirthday(data.birthday);
@@ -207,7 +209,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
   }
 
   Future<void> _showAvatarPicker() async {
-    final result = await showModalBottomSheet<ProfileAvatarMode>(
+    final result = await showModalBottomSheet<UserAvatarMode>(
       context: context,
       backgroundColor: const Color(0xFF2B2B2B),
       shape: const RoundedRectangleBorder(
@@ -232,12 +234,12 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
               const SizedBox(height: 12),
               _AvatarOption(
                 title: '使用Logo头像',
-                onTap: () => Navigator.of(context).pop(ProfileAvatarMode.logo),
+                onTap: () => Navigator.of(context).pop(UserAvatarMode.logo),
               ),
               const SizedBox(height: 8),
               _AvatarOption(
                 title: '使用首字母头像',
-                onTap: () => Navigator.of(context).pop(ProfileAvatarMode.initials),
+                onTap: () => Navigator.of(context).pop(UserAvatarMode.initials),
               ),
             ],
           ),
@@ -253,14 +255,15 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
 
   Future<void> _saveProfile() async {
     setState(() => _saving = true);
-    final data = ProfileData(
-      name: _nameController.text.trim(),
+    final base = _currentProfile ?? UserProfile.initial();
+    final data = base.copyWith(
+      username: _nameController.text.trim(),
       mbti: _mbtiController.text.trim(),
       email: _emailController.text.trim(),
       birthday: _birthday,
       avatarMode: _avatarMode,
     );
-    await _repository.saveProfile(data);
+    await _repository.saveCurrentUser(data);
     if (!mounted) {
       return;
     }
@@ -314,7 +317,7 @@ class _BackButton extends StatelessWidget {
 }
 
 class _AvatarCard extends StatelessWidget {
-  final ProfileAvatarMode avatarMode;
+  final UserAvatarMode avatarMode;
   final String name;
   final VoidCallback onTapEdit;
 
@@ -344,7 +347,7 @@ class _AvatarCard extends StatelessWidget {
                 shape: BoxShape.circle,
               ),
               child: Center(
-                child: avatarMode == ProfileAvatarMode.logo
+                child: avatarMode == UserAvatarMode.logo
                     ? Image.asset(
                         'assets/source/logo.png',
                         width: 56,

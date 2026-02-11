@@ -1,7 +1,7 @@
 ﻿import 'package:flutter/material.dart';
 
-import '../data/profile_data.dart';
-import '../data/profile_repository.dart';
+import '../data/user_profile.dart';
+import '../data/user_repository.dart';
 import '../theme/app_theme.dart';
 import '../widgets/profile_menu_item.dart';
 import 'profile_edit_screen.dart';
@@ -14,8 +14,8 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  final ProfileRepository _repository = ProfileRepository();
-  ProfileData? _profile;
+  final UserRepository _repository = UserRepository();
+  UserProfile? _profile;
 
   @override
   void initState() {
@@ -24,7 +24,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _loadProfile() async {
-    final data = await _repository.fetchProfile();
+    final data = await _repository.fetchCurrentUser();
     if (!mounted) {
       return;
     }
@@ -33,7 +33,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final profile = _profile ?? ProfileData.initial();
+    final profile = _profile ?? UserProfile.initial();
     final age = _calculateAge(profile.birthday);
 
     return Container(
@@ -67,7 +67,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       iconAsset: 'assets/profile/icon-user.svg',
                       label: '个人信息',
                       onTap: () async {
-                        final result = await Navigator.of(context).push<ProfileData>(
+                        final result = await Navigator.of(context).push<UserProfile>(
                           MaterialPageRoute(
                             builder: (_) => const ProfileEditScreen(),
                           ),
@@ -126,7 +126,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 }
 
 class _HeaderSection extends StatelessWidget {
-  final ProfileData profile;
+  final UserProfile profile;
 
   const _HeaderSection({required this.profile});
 
@@ -155,7 +155,7 @@ class _HeaderSection extends StatelessWidget {
               shape: BoxShape.circle,
             ),
             child: Center(
-              child: profile.avatarMode == ProfileAvatarMode.logo
+              child: profile.avatarMode == UserAvatarMode.logo
                   ? Image.asset(
                       'assets/source/logo.png',
                       width: 72,
@@ -163,7 +163,7 @@ class _HeaderSection extends StatelessWidget {
                       fit: BoxFit.contain,
                     )
                   : Text(
-                      _initials(profile.name),
+                      _initials(profile.username),
                       style: const TextStyle(
                         fontSize: 32,
                         fontWeight: FontWeight.w700,
@@ -173,7 +173,7 @@ class _HeaderSection extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-          Text(profile.name, style: AppTextStyles.profileName),
+          Text(profile.username, style: AppTextStyles.profileName),
           const SizedBox(height: 4),
           Text(profile.email, style: AppTextStyles.profileEmail),
           const SizedBox(height: 4),
