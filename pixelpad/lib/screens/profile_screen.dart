@@ -253,29 +253,6 @@ class _LoggedOutState extends StatelessWidget {
                   ],
                 ),
               ),
-              const SizedBox(height: 20),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF2A2A2A),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Row(
-                  children: const [
-                    Icon(Icons.lock_outline, color: AppColors.white, size: 20),
-                    SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        '安全提醒：请勿将密码告知他人。',
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: AppColors.white,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
             ],
           ),
         ),

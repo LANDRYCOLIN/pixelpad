@@ -3,16 +3,15 @@ import 'package:flutter/material.dart';
 import '../data/user_profile.dart';
 import '../data/user_repository.dart';
 import '../theme/app_theme.dart';
-import 'register_guide_screen.dart';
 
-class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+class RegisterGuideScreen extends StatefulWidget {
+  const RegisterGuideScreen({super.key});
 
   @override
-  State<LoginScreen> createState() => _LoginScreenState();
+  State<RegisterGuideScreen> createState() => _RegisterGuideScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _RegisterGuideScreenState extends State<RegisterGuideScreen> {
   final UserRepository _repository = UserRepository();
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
@@ -56,7 +55,7 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               const SizedBox(height: 16),
               const Text(
-                '欢迎回来',
+                '创建新账号',
                 style: TextStyle(
                   fontSize: 26,
                   fontWeight: FontWeight.w700,
@@ -65,7 +64,7 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               const SizedBox(height: 6),
               const Text(
-                '请输入手机号与密码登录',
+                '仅需手机号和密码即可完成注册',
                 style: TextStyle(
                   fontSize: 14,
                   color: Color(0xFFBFBFBF),
@@ -98,7 +97,7 @@ class _LoginScreenState extends State<LoginScreen> {
               SizedBox(
                 height: 46,
                 child: ElevatedButton(
-                  onPressed: _loading ? null : _handleLogin,
+                  onPressed: _loading ? null : _handleRegister,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFFF9F871),
                     foregroundColor: const Color(0xFF232323),
@@ -109,20 +108,8 @@ class _LoginScreenState extends State<LoginScreen> {
                       fontWeight: FontWeight.w600,
                     ),
                   ),
-                  child: Text(_loading ? '登录中...' : '登录'),
+                  child: Text(_loading ? '注册中...' : '注册'),
                 ),
-              ),
-              const SizedBox(height: 12),
-              TextButton(
-                onPressed: _loading ? null : _handleRegister,
-                style: TextButton.styleFrom(
-                  foregroundColor: const Color(0xFFF9F871),
-                  textStyle: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                child: const Text('没有账号？去注册'),
               ),
             ],
           ),
@@ -131,7 +118,7 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  Future<void> _handleLogin() async {
+  Future<void> _handleRegister() async {
     final phone = _phoneController.text.trim();
     final password = _passwordController.text.trim();
     if (phone.isEmpty || password.isEmpty) {
@@ -143,7 +130,7 @@ class _LoginScreenState extends State<LoginScreen> {
       _error = null;
     });
     try {
-      final user = await _repository.login(phone: phone, password: password);
+      final user = await _repository.register(phone: phone, password: password);
       if (!mounted) {
         return;
       }
@@ -152,24 +139,12 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) {
         return;
       }
-      setState(() => _error = '登录失败，请检查手机号或密码');
+      setState(() => _error = '注册失败，请稍后重试');
     } finally {
       if (mounted) {
         setState(() => _loading = false);
       }
     }
-  }
-
-  Future<void> _handleRegister() async {
-    final result = await Navigator.of(context).push<UserProfile>(
-      MaterialPageRoute(
-        builder: (_) => const RegisterGuideScreen(),
-      ),
-    );
-    if (!mounted || result == null) {
-      return;
-    }
-    Navigator.of(context).pop<UserProfile>(result);
   }
 }
 
