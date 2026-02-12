@@ -125,47 +125,15 @@ class OnboardingPageFour extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 20),
-                    GestureDetector(
+                    _FrostedButton(
+                      label: '开始',
+                      width: buttonWidth,
                       onTap: onNext ??
                           () => Navigator.of(context).push(
                                 MaterialPageRoute(
                                   builder: (_) => const LoginScreen(),
                                 ),
                               ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(999),
-                        child: BackdropFilter(
-                          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-                          child: Container(
-                            width: buttonWidth,
-                            height: 44,
-                            alignment: Alignment.center,
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.18),
-                              borderRadius: BorderRadius.circular(999),
-                              border: Border.all(
-                                color: Colors.white.withOpacity(0.35),
-                                width: 1,
-                              ),
-                              boxShadow: const [
-                                BoxShadow(
-                                  color: Color(0x40000000),
-                                  blurRadius: 8,
-                                  offset: Offset(0, 4),
-                                ),
-                              ],
-                            ),
-                            child: const Text(
-                              '开始',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 18,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
                     ),
                   ],
                 ),
@@ -192,6 +160,84 @@ class _IndicatorDot extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(isActive ? 1 : 0.45),
         borderRadius: BorderRadius.circular(999),
+      ),
+    );
+  }
+}
+
+class _FrostedButton extends StatefulWidget {
+  final String label;
+  final double width;
+  final VoidCallback onTap;
+
+  const _FrostedButton({
+    required this.label,
+    required this.width,
+    required this.onTap,
+  });
+
+  @override
+  State<_FrostedButton> createState() => _FrostedButtonState();
+}
+
+class _FrostedButtonState extends State<_FrostedButton> {
+  bool _pressed = false;
+
+  void _handleHighlightChanged(bool isPressed) {
+    if (_pressed == isPressed) return;
+    setState(() => _pressed = isPressed);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedScale(
+      scale: _pressed ? 0.97 : 1,
+      duration: const Duration(milliseconds: 120),
+      curve: Curves.easeOut,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(999),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: widget.onTap,
+              onHighlightChanged: _handleHighlightChanged,
+              borderRadius: BorderRadius.circular(999),
+              splashColor: Colors.white.withOpacity(0.18),
+              highlightColor: Colors.white.withOpacity(0.12),
+              child: Ink(
+                width: widget.width,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(_pressed ? 0.28 : 0.18),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(
+                    color: Colors.white.withOpacity(0.35),
+                    width: 1,
+                  ),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x40000000),
+                      blurRadius: 8,
+                      offset: Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Center(
+                  child: Text(
+                    widget.label,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

@@ -1,24 +1,25 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 
 import '../data/user_profile.dart';
 import '../data/user_repository.dart';
 import '../theme/app_theme.dart';
+import 'main_shell.dart';
 import 'profile_onboarding/profile_guide_intro_screen.dart';
+import 'register_guide_screen.dart';
 
-class RegisterGuideScreen extends StatefulWidget {
-  const RegisterGuideScreen({super.key});
+class PhoneLoginScreen extends StatefulWidget {
+  const PhoneLoginScreen({super.key});
 
   @override
-  State<RegisterGuideScreen> createState() => _RegisterGuideScreenState();
+  State<PhoneLoginScreen> createState() => _PhoneLoginScreenState();
 }
 
-class _RegisterGuideScreenState extends State<RegisterGuideScreen> {
+class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
   final UserRepository _repository = UserRepository();
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   bool _loading = false;
   String? _error;
-  bool _agreed = false;
 
   @override
   void dispose() {
@@ -43,7 +44,7 @@ class _RegisterGuideScreenState extends State<RegisterGuideScreen> {
                   onTap: () => Navigator.of(context).pop(),
                   borderRadius: BorderRadius.circular(20),
                   child: Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -55,8 +56,8 @@ class _RegisterGuideScreenState extends State<RegisterGuideScreen> {
                             color: Color(0xFFF9F871),
                           ),
                         ),
-                        SizedBox(width: 4),
-                        Text(
+                        const SizedBox(width: 4),
+                        const Text(
                           '返回',
                           style: TextStyle(
                             fontSize: 14,
@@ -71,7 +72,7 @@ class _RegisterGuideScreenState extends State<RegisterGuideScreen> {
               ),
               const SizedBox(height: 16),
               const Text(
-                '创建新账号',
+                '欢迎回来',
                 style: TextStyle(
                   fontSize: 26,
                   fontWeight: FontWeight.w700,
@@ -80,7 +81,7 @@ class _RegisterGuideScreenState extends State<RegisterGuideScreen> {
               ),
               const SizedBox(height: 6),
               const Text(
-                '仅需手机号和密码即可完成注册',
+                '请输入手机号与密码登录',
                 style: TextStyle(
                   fontSize: 14,
                   color: Color(0xFFBFBFBF),
@@ -110,79 +111,10 @@ class _RegisterGuideScreenState extends State<RegisterGuideScreen> {
                     ),
                   ),
                 ),
-              Padding(
-                padding: const EdgeInsets.only(bottom: 14),
-                child: Align(
-                  alignment: Alignment.center,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Checkbox(
-                        value: _agreed,
-                        onChanged: (value) {
-                          setState(() => _agreed = value ?? false);
-                        },
-                        shape: const CircleBorder(),
-                        activeColor: const Color(0xFFF9F871),
-                        checkColor: const Color(0xFF232323),
-                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        visualDensity: const VisualDensity(horizontal: -2, vertical: -2),
-                        side: BorderSide(
-                          color: Colors.white.withOpacity(0.7),
-                          width: 1.5,
-                        ),
-                      ),
-                      const SizedBox(width: 2),
-                      const Text(
-                        '同意',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.white,
-                        ),
-                      ),
-                      const SizedBox(width: 2),
-                      InkWell(
-                        onTap: () {},
-                        child: const Text(
-                          '《用户协议》',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.white,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 2),
-                      const Text(
-                        '和',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.white,
-                        ),
-                      ),
-                      const SizedBox(width: 2),
-                      InkWell(
-                        onTap: () {},
-                        child: const Text(
-                          '《隐私政策》',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.white,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
               SizedBox(
                 height: 46,
                 child: ElevatedButton(
-                  onPressed: _loading ? null : _handleRegister,
+                  onPressed: _loading ? null : _handleLogin,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFFF9F871),
                     foregroundColor: const Color(0xFF232323),
@@ -193,8 +125,20 @@ class _RegisterGuideScreenState extends State<RegisterGuideScreen> {
                       fontWeight: FontWeight.w600,
                     ),
                   ),
-                  child: Text(_loading ? '注册中...' : '注册'),
+                  child: Text(_loading ? '登录中...' : '登录'),
                 ),
+              ),
+              const SizedBox(height: 12),
+              TextButton(
+                onPressed: _loading ? null : _handleRegister,
+                style: TextButton.styleFrom(
+                  foregroundColor: const Color(0xFFF9F871),
+                  textStyle: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                child: const Text('没有账号？去注册'),
               ),
             ],
           ),
@@ -203,7 +147,7 @@ class _RegisterGuideScreenState extends State<RegisterGuideScreen> {
     );
   }
 
-  Future<void> _handleRegister() async {
+  Future<void> _handleLogin() async {
     final phone = _phoneController.text.trim();
     final password = _passwordController.text.trim();
     if (phone.isEmpty || password.isEmpty) {
@@ -215,24 +159,39 @@ class _RegisterGuideScreenState extends State<RegisterGuideScreen> {
       _error = null;
     });
     try {
-      final user = await _repository.register(phone: phone, password: password);
+      final user = await _repository.login(phone: phone, password: password);
       if (!mounted) {
         return;
       }
       Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const ProfileGuideIntroScreen()),
+        MaterialPageRoute(builder: (_) => MainShell()),
         (route) => false,
       );
     } catch (_) {
       if (!mounted) {
         return;
       }
-      setState(() => _error = '注册失败，请稍后重试');
+      setState(() => _error = '登录失败，请检查手机号或密码');
     } finally {
       if (mounted) {
         setState(() => _loading = false);
       }
     }
+  }
+
+  Future<void> _handleRegister() async {
+    final result = await Navigator.of(context).push<UserProfile>(
+      MaterialPageRoute(
+        builder: (_) => const RegisterGuideScreen(),
+      ),
+    );
+    if (!mounted || result == null) {
+      return;
+    }
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const ProfileGuideIntroScreen()),
+      (route) => false,
+    );
   }
 }
 
