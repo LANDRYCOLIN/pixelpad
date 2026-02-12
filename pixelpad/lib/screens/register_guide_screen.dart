@@ -17,6 +17,7 @@ class _RegisterGuideScreenState extends State<RegisterGuideScreen> {
   final TextEditingController _passwordController = TextEditingController();
   bool _loading = false;
   String? _error;
+  bool _agreed = false;
 
   @override
   void dispose() {
@@ -40,15 +41,29 @@ class _RegisterGuideScreenState extends State<RegisterGuideScreen> {
                 child: InkWell(
                   onTap: () => Navigator.of(context).pop(),
                   borderRadius: BorderRadius.circular(20),
-                  child: const Padding(
+                  child: Padding(
                     padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    child: Text(
-                      '返回',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFFF9F871),
-                      ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Transform.rotate(
+                          angle: 3.1415926,
+                          child: Icon(
+                            Icons.play_arrow,
+                            size: 16,
+                            color: Color(0xFFF9F871),
+                          ),
+                        ),
+                        SizedBox(width: 4),
+                        Text(
+                          '返回',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFFF9F871),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -94,6 +109,75 @@ class _RegisterGuideScreenState extends State<RegisterGuideScreen> {
                     ),
                   ),
                 ),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 14),
+                child: Align(
+                  alignment: Alignment.center,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Checkbox(
+                        value: _agreed,
+                        onChanged: (value) {
+                          setState(() => _agreed = value ?? false);
+                        },
+                        shape: const CircleBorder(),
+                        activeColor: const Color(0xFFF9F871),
+                        checkColor: const Color(0xFF232323),
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        visualDensity: const VisualDensity(horizontal: -2, vertical: -2),
+                        side: BorderSide(
+                          color: Colors.white.withOpacity(0.7),
+                          width: 1.5,
+                        ),
+                      ),
+                      const SizedBox(width: 2),
+                      const Text(
+                        '同意',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.white,
+                        ),
+                      ),
+                      const SizedBox(width: 2),
+                      InkWell(
+                        onTap: () {},
+                        child: const Text(
+                          '《用户协议》',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.white,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 2),
+                      const Text(
+                        '和',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.white,
+                        ),
+                      ),
+                      const SizedBox(width: 2),
+                      InkWell(
+                        onTap: () {},
+                        child: const Text(
+                          '《隐私政策》',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.white,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
               SizedBox(
                 height: 46,
                 child: ElevatedButton(

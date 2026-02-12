@@ -62,6 +62,7 @@ flutter:
 
   assets:
     - assets/source/
+    - assets/source/login_anime/
     - assets/tabbar/
     - assets/profile/
 

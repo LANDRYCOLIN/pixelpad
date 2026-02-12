@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../data/user_profile.dart';
 import '../data/user_repository.dart';
 import '../theme/app_theme.dart';
+import 'main_shell.dart';
 import 'register_guide_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -41,15 +42,29 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: InkWell(
                   onTap: () => Navigator.of(context).pop(),
                   borderRadius: BorderRadius.circular(20),
-                  child: const Padding(
+                  child: Padding(
                     padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    child: Text(
-                      '返回',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFFF9F871),
-                      ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Transform.rotate(
+                          angle: 3.1415926,
+                          child: Icon(
+                            Icons.play_arrow,
+                            size: 16,
+                            color: Color(0xFFF9F871),
+                          ),
+                        ),
+                        SizedBox(width: 4),
+                        Text(
+                          '返回',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFFF9F871),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -147,7 +162,10 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) {
         return;
       }
-      Navigator.of(context).pop<UserProfile>(user);
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const MainShell()),
+        (route) => false,
+      );
     } catch (_) {
       if (!mounted) {
         return;
