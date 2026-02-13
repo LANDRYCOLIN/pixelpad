@@ -79,6 +79,10 @@ class _HomeBody extends StatelessWidget {
     'assets/source/community-example2.png',
     'assets/source/community-example3.png',
     'assets/source/community-example4.png',
+    'assets/source/community-example5.png',
+    'assets/source/community-example6.png',
+    'assets/source/community-example7.png',
+    'assets/source/community-example8.png',
   ];
 
   @override
@@ -108,20 +112,49 @@ class _HomeBody extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 12),
-        GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: _communityImages.length,
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-            mainAxisSpacing: 12,
-            crossAxisSpacing: 12,
-            childAspectRatio: 0.95,
-          ),
-          itemBuilder: (context, index) {
-            return _CommunityCard(
-              image: _communityImages[index],
-              featured: index.isEven,
+        LayoutBuilder(
+          builder: (context, constraints) {
+            const double spacing = 12;
+            final double itemWidth = (constraints.maxWidth - spacing) / 2;
+            final List<Widget> leftColumn = [];
+            final List<Widget> rightColumn = [];
+
+            for (int index = 0; index < _communityImages.length; index += 1) {
+              final Widget card = _CommunityCard(
+                image: _communityImages[index],
+                featured: index.isEven,
+                width: itemWidth,
+              );
+              if (index.isEven) {
+                leftColumn.add(card);
+                if (index + 2 < _communityImages.length) {
+                  leftColumn.add(const SizedBox(height: spacing));
+                }
+              } else {
+                rightColumn.add(card);
+                if (index + 2 < _communityImages.length) {
+                  rightColumn.add(const SizedBox(height: spacing));
+                }
+              }
+            }
+
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: itemWidth,
+                  child: Column(
+                    children: leftColumn,
+                  ),
+                ),
+                const SizedBox(width: spacing),
+                SizedBox(
+                  width: itemWidth,
+                  child: Column(
+                    children: rightColumn,
+                  ),
+                ),
+              ],
             );
           },
         ),
@@ -215,89 +248,95 @@ class _HeroCard extends StatelessWidget {
 class _CommunityCard extends StatelessWidget {
   final String image;
   final bool featured;
+  final double width;
 
-  const _CommunityCard({required this.image, required this.featured});
+  const _CommunityCard({
+    required this.image,
+    required this.featured,
+    required this.width,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(14),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.25),
-            blurRadius: 12,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      child: Stack(
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(14),
-            child: Image.asset(
-              image,
-              fit: BoxFit.cover,
-              width: double.infinity,
-              height: double.infinity,
+    return SizedBox(
+      width: width,
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.25),
+              blurRadius: 12,
+              offset: const Offset(0, 6),
             ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(14),
+          child: Stack(
+            children: [
+              Image.asset(
+                image,
+                width: width,
+                fit: BoxFit.fitWidth,
+              ),
+              Positioned(
+                right: 10,
+                bottom: 10,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xCC1E1E1E),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      SvgPicture.asset(
+                        'assets/source/icon_like.svg',
+                        width: 9,
+                        height: 9,
+                      ),
+                      const SizedBox(width: 4),
+                      const Text(
+                        '120',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.white,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      SvgPicture.asset(
+                        'assets/source/icon_time.svg',
+                        width: 10,
+                        height: 9,
+                      ),
+                      const SizedBox(width: 4),
+                      const Text(
+                        '12min',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.white,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              if (featured)
+                const Positioned(
+                  right: 10,
+                  top: 10,
+                  child: Icon(
+                    Icons.star_rounded,
+                    color: Color(0xFFF9F871),
+                    size: 20,
+                  ),
+                ),
+            ],
           ),
-          Positioned(
-            left: 10,
-            right: 10,
-            bottom: 10,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: const Color(0xCC1E1E1E),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Row(
-                children: [
-                  SvgPicture.asset(
-                    'assets/source/icon_like.svg',
-                    width: 10,
-                    height: 10,
-                  ),
-                  const SizedBox(width: 6),
-                  const Text(
-                    '120',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.white,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  SvgPicture.asset(
-                    'assets/source/icon_time.svg',
-                    width: 11,
-                    height: 10,
-                  ),
-                  const SizedBox(width: 6),
-                  const Text(
-                    '12min',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.white,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          if (featured)
-            const Positioned(
-              right: 10,
-              top: 10,
-              child: Icon(
-                Icons.star_rounded,
-                color: Color(0xFFF9F871),
-                size: 20,
-              ),
-            ),
-        ],
+        ),
       ),
     );
   }

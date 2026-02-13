@@ -125,7 +125,7 @@ class _MakeHeader extends StatelessWidget {
         ),
         const SizedBox(width: 10),
         Text(
-          '显示',
+          '图片制作',
           style: AppTextStyles.pageTitle.copyWith(color: AppColors.primary),
         ),
         const Spacer(),
