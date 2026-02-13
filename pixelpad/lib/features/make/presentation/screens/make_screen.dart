@@ -11,6 +11,7 @@ import 'package:image_picker/image_picker.dart' as picker;
 
 import 'package:pixelpad/core/theme/app_theme.dart';
 import 'package:pixelpad/features/make/presentation/screens/make_result_screen.dart';
+import 'package:pixelpad/features/make/presentation/screens/bean_preset_screen.dart';
 
 const List<String> _galleryAssets = [
   'assets/source/community-example1.png',
@@ -400,7 +401,98 @@ class _UploadOptionsSheet extends StatelessWidget {
                 ),
               ],
             ),
+            const SizedBox(height: 18),
+            _PresetHintCard(
+              onSettingsTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (context) => const BeanPresetScreen(),
+                ),
+              ),
+            ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PresetHintCard extends StatelessWidget {
+  final VoidCallback onSettingsTap;
+
+  const _PresetHintCard({
+    required this.onSettingsTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: const Color(0xFFA48BF0),
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: onSettingsTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.55),
+              width: 1.2,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.16),
+                blurRadius: 10,
+                offset: const Offset(0, 6),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '调整豆子预设，以获得更好的创作体验',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                    height: 1.2,
+                    shadows: [
+                      Shadow(
+                        color: Colors.white.withValues(alpha: 0.25),
+                        offset: const Offset(0, 1),
+                        blurRadius: 2,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFBDA9FF),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.7),
+                    width: 1,
+                  ),
+                ),
+                child: Center(
+                  child: SvgPicture.asset(
+                    'assets/source/icon_settings.svg',
+                    width: 20,
+                    height: 20,
+                    colorFilter: const ColorFilter.mode(
+                      Color(0xFF2D2148),
+                      BlendMode.srcIn,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
