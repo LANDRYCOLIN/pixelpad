@@ -1,15 +1,19 @@
 ﻿import 'dart:async';
 import 'dart:math';
+import 'dart:convert';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:http/http.dart' as http;
 import 'package:image_editor/image_editor.dart';
 import 'package:image_picker/image_picker.dart' as picker;
 
 import 'package:pixelpad/core/theme/app_theme.dart';
+import 'package:pixelpad/features/make/data/make_api.dart';
+import 'package:pixelpad/features/make/data/bean_preset_storage.dart';
 import 'package:pixelpad/features/make/presentation/screens/make_result_screen.dart';
 import 'package:pixelpad/features/make/presentation/screens/bean_preset_screen.dart';
 
@@ -23,6 +27,65 @@ const List<String> _galleryAssets = [
   'assets/source/a5f69544-ad63-48ff-a53d-4fb5d974e6b4.png',
   'assets/source/mygallery.png',
 ];
+
+class _ProcessResult {
+  final String sessionId;
+  final int totalPixels;
+  final List<_DetectedColor> detectedColors;
+  final int width;
+  final int height;
+  final String settingsFile;
+
+  const _ProcessResult({
+    required this.sessionId,
+    required this.totalPixels,
+    required this.detectedColors,
+    required this.width,
+    required this.height,
+    required this.settingsFile,
+  });
+
+  factory _ProcessResult.fromJson(Map<String, dynamic> json) {
+    final List<dynamic> rawColors = (json['detected_colors'] as List<dynamic>? ?? []);
+    return _ProcessResult(
+      sessionId: json['session_id'] as String? ?? '',
+      totalPixels: (json['total_pixels'] as num?)?.toInt() ?? 0,
+      detectedColors: rawColors
+          .whereType<Map<String, dynamic>>()
+          .map(_DetectedColor.fromJson)
+          .toList(),
+      width: (json['width'] as num?)?.toInt() ?? 0,
+      height: (json['height'] as num?)?.toInt() ?? 0,
+      settingsFile: json['settings_file'] as String? ?? '',
+    );
+  }
+}
+
+class _DetectedColor {
+  final String id;
+  final int count;
+  final String hex;
+  final List<int> rgba;
+
+  const _DetectedColor({
+    required this.id,
+    required this.count,
+    required this.hex,
+    required this.rgba,
+  });
+
+  factory _DetectedColor.fromJson(Map<String, dynamic> json) {
+    return _DetectedColor(
+      id: json['id'] as String? ?? '',
+      count: (json['count'] as num?)?.toInt() ?? 0,
+      hex: json['hex'] as String? ?? '',
+      rgba: (json['rgba'] as List<dynamic>? ?? const [])
+          .whereType<num>()
+          .map((value) => value.toInt())
+          .toList(),
+    );
+  }
+}
 
 class MakeScreen extends StatelessWidget {
   const MakeScreen({super.key});
@@ -621,6 +684,8 @@ class _ImageEditorScreenState extends State<_ImageEditorScreen> {
 
   Uint8List? _editedBytes;
   bool _processing = false;
+  bool _uploading = false;
+  bool _cropDirty = false;
   Size _imageSize = const Size(1, 1);
   Rect _cropRectPx = const Rect.fromLTWH(0, 0, 1, 1);
 
@@ -747,6 +812,7 @@ class _ImageEditorScreenState extends State<_ImageEditorScreen> {
 
     setState(() {
       _cropRectPx = Rect.fromLTWH(newLeft, newTop, size, size);
+      _cropDirty = true;
     });
   }
 
@@ -804,6 +870,11 @@ class _ImageEditorScreenState extends State<_ImageEditorScreen> {
       ),
     );
     await _runEdit(option);
+    if (mounted) {
+      setState(() {
+        _cropDirty = false;
+      });
+    }
   }
 
   Future<void> _applyScale() async {
@@ -846,8 +917,79 @@ class _ImageEditorScreenState extends State<_ImageEditorScreen> {
     setState(() {
       _editedBytes = null;
       _resetCropRect();
+      _cropDirty = false;
     });
     _updateImageSize(widget.bytes);
+  }
+
+  Future<_ProcessResult> _uploadToBackend(Uint8List bytes) async {
+    final BeanPreset preset = await BeanPresetStorage.load();
+    final http.MultipartRequest request = http.MultipartRequest(
+      'POST',
+      Uri.parse('$makeApiBaseUrl/process'),
+    );
+    request.fields['settings_file'] = preset.settingsFile;
+    request.fields['max_colors'] = preset.count.toString();
+    request.files.add(
+      http.MultipartFile.fromBytes(
+        'file',
+        bytes,
+        filename: 'upload.png',
+      ),
+    );
+
+    final http.StreamedResponse streamed = await request.send();
+    final http.Response response = await http.Response.fromStream(streamed);
+    if (response.statusCode != 200) {
+      throw Exception('Process failed: ${response.statusCode}');
+    }
+    final Map<String, dynamic> json =
+        (jsonDecode(response.body) as Map<String, dynamic>? ?? {});
+    return _ProcessResult.fromJson(json);
+  }
+
+  Future<void> _handleComplete() async {
+    if (_processing || _uploading) {
+      return;
+    }
+    if (_cropDirty) {
+      await _applyCrop();
+    }
+    setState(() {
+      _uploading = true;
+    });
+    try {
+      final _ProcessResult result = await _uploadToBackend(_displayBytes);
+      if (!mounted) return;
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (context) => MakeResultScreen(
+            sessionId: result.sessionId,
+            detectedColors: result.detectedColors
+                .map((color) => DetectedColor(
+                      id: color.id,
+                      count: color.count,
+                      hex: color.hex,
+                      rgba: color.rgba,
+                    ))
+                .toList(),
+            width: result.width,
+            height: result.height,
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('上传失败，请重试')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _uploading = false;
+        });
+      }
+    }
   }
 
   @override
@@ -960,13 +1102,7 @@ class _ImageEditorScreenState extends State<_ImageEditorScreen> {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    onPressed: _processing
-                        ? null
-                        : () => Navigator.of(context).push(
-                              MaterialPageRoute<void>(
-                                builder: (context) => const MakeResultScreen(),
-                              ),
-                            ),
+                    onPressed: (_processing || _uploading) ? null : _handleComplete,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFFF9F871),
                       foregroundColor: const Color(0xFF232323),
@@ -974,7 +1110,7 @@ class _ImageEditorScreenState extends State<_ImageEditorScreen> {
                         borderRadius: BorderRadius.circular(20),
                       ),
                     ),
-                    child: Text(_processing ? '处理中...' : '完成'),
+                    child: Text((_processing || _uploading) ? '处理中...' : '完成'),
                   ),
                 ),
               ],

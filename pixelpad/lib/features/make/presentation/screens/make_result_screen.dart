@@ -1,10 +1,106 @@
-﻿import 'package:flutter/material.dart';
+﻿import 'dart:typed_data';
+
+import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:http/http.dart' as http;
 
 import 'package:pixelpad/core/theme/app_theme.dart';
+import 'package:pixelpad/features/make/data/make_api.dart';
 
-class MakeResultScreen extends StatelessWidget {
-  const MakeResultScreen({super.key});
+class DetectedColor {
+  final String id;
+  final int count;
+  final String hex;
+  final List<int> rgba;
+
+  const DetectedColor({
+    required this.id,
+    required this.count,
+    required this.hex,
+    required this.rgba,
+  });
+}
+
+class MakeResultScreen extends StatefulWidget {
+  final String sessionId;
+  final List<DetectedColor> detectedColors;
+  final int width;
+  final int height;
+
+  const MakeResultScreen({
+    super.key,
+    required this.sessionId,
+    required this.detectedColors,
+    required this.width,
+    required this.height,
+  });
+
+  @override
+  State<MakeResultScreen> createState() => _MakeResultScreenState();
+}
+
+class _MakeResultScreenState extends State<MakeResultScreen> {
+  Uint8List? _imageBytes;
+  bool _loading = false;
+  String? _error;
+  final Set<String> _selected = <String>{};
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchRenderImage();
+  }
+
+  Future<void> _fetchRenderImage({String? colorId}) async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final Uri url = Uri.parse('$makeApiBaseUrl/render');
+      final Map<String, String> body = {
+        'session_id': widget.sessionId,
+      };
+      if (colorId != null && colorId.isNotEmpty) {
+        body['color_id'] = colorId;
+      }
+      final http.Response response = await http.post(url, body: body);
+      if (response.statusCode != 200) {
+        throw Exception('Render failed: ${response.statusCode}');
+      }
+      if (!mounted) return;
+      setState(() {
+        _imageBytes = response.bodyBytes;
+      });
+    } catch (err) {
+      if (!mounted) return;
+      setState(() {
+        _error = '加载失败';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+        });
+      }
+    }
+  }
+
+  void _toggleColor(String id) {
+    setState(() {
+      if (_selected.contains(id)) {
+        _selected.remove(id);
+      } else {
+        _selected.add(id);
+      }
+    });
+
+    if (_selected.length == 1) {
+      _fetchRenderImage(colorId: _selected.first);
+    } else {
+      _fetchRenderImage();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -30,20 +126,43 @@ class MakeResultScreen extends StatelessWidget {
                           borderRadius: BorderRadius.circular(24),
                         ),
                         alignment: Alignment.center,
-                        child: const Text(
-                          '图片预览区域',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: Color(0xFF9A9A9A),
-                          ),
-                        ),
+                        child: _loading
+                            ? const CircularProgressIndicator(
+                                color: AppColors.primary,
+                              )
+                            : _imageBytes != null
+                                ? ClipRRect(
+                                    borderRadius: BorderRadius.circular(18),
+                                    child: Image.memory(
+                                      _imageBytes!,
+                                      fit: BoxFit.contain,
+                                    ),
+                                  )
+                                : Text(
+                                    _error ?? '暂无预览',
+                                    style: const TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color: Color(0xFF9A9A9A),
+                                    ),
+                                  ),
                       ),
                     ),
                     const SizedBox(height: 18),
                     const Divider(color: Color(0xFF404040), height: 1),
                     const SizedBox(height: 12),
-                    const _ColorsSection(),
+                    _ColorsSection(
+                      tokens: widget.detectedColors
+                          .map(
+                            (color) => _ColorToken(
+                              color.id,
+                              _colorFromHex(color.hex),
+                            ),
+                          )
+                          .toList(),
+                      selected: _selected,
+                      onToggle: _toggleColor,
+                    ),
                     const SizedBox(height: 16),
                     const Divider(color: Color(0xFF404040), height: 1),
                     const SizedBox(height: 14),
@@ -164,19 +283,15 @@ class _ResultPreviewCard extends StatelessWidget {
 }
 
 class _ColorsSection extends StatelessWidget {
-  const _ColorsSection();
+  final List<_ColorToken> tokens;
+  final Set<String> selected;
+  final ValueChanged<String> onToggle;
 
-  static const List<_ColorToken> _tokens = [
-    _ColorToken('E2', Color(0xFFF7C7D3)),
-    _ColorToken('F13', Color(0xFFF27E5C)),
-    _ColorToken('F1', Color(0xFFFAD4C3)),
-    _ColorToken('F7', Color(0xFF121212)),
-    _ColorToken('B14', Color(0xFFBDE36F)),
-    _ColorToken('H2', Color(0xFFEFEFEF)),
-    _ColorToken('A19', Color(0xFFF5B0B0)),
-    _ColorToken('C24', Color(0xFF8CBDF0)),
-    _ColorToken('F24', Color(0xFFF2BFD1)),
-  ];
+  const _ColorsSection({
+    required this.tokens,
+    required this.selected,
+    required this.onToggle,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -185,16 +300,28 @@ class _ColorsSection extends StatelessWidget {
       children: [
         const _SectionPill(label: 'Colors'),
         const SizedBox(height: 12),
-        Wrap(
-          spacing: 10,
-          runSpacing: 10,
-          children: _tokens
-              .map((token) => _ColorTokenChip(
-                    label: token.label,
-                    color: token.color,
-                  ))
-              .toList(),
-        ),
+        if (tokens.isEmpty)
+          const Text(
+            '暂无颜色数据',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: Color(0xFF9A9A9A),
+            ),
+          )
+        else
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: tokens
+                .map((token) => _ColorTokenChip(
+                      label: token.label,
+                      color: token.color,
+                      selected: selected.contains(token.label),
+                      onTap: () => onToggle(token.label),
+                    ))
+                .toList(),
+          ),
       ],
     );
   }
@@ -236,49 +363,82 @@ class _ColorToken {
 class _ColorTokenChip extends StatelessWidget {
   final String label;
   final Color color;
+  final bool selected;
+  final VoidCallback onTap;
 
-  const _ColorTokenChip({required this.label, required this.color});
+  const _ColorTokenChip({
+    required this.label,
+    required this.color,
+    required this.selected,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
       width: 52,
       height: 52,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          Container(
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: color,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.15),
-                  blurRadius: 6,
-                  offset: const Offset(0, 3),
-                ),
-              ],
-            ),
-          ),
-          Container(
-            width: 34,
-            height: 34,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: AppColors.white,
-              shape: BoxShape.circle,
-              border: Border.all(color: const Color(0xFF2B2B2B), width: 1),
-            ),
-            child: Text(
-              label,
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                color: Color(0xFF1A1A1A),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(26),
+        onTap: onTap,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Container(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: color,
+                border: selected
+                    ? Border.all(color: AppColors.white, width: 3)
+                    : null,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.15),
+                    blurRadius: 6,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
               ),
             ),
-          ),
-        ],
+            Container(
+              width: 34,
+              height: 34,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: AppColors.white,
+                shape: BoxShape.circle,
+                border: Border.all(color: const Color(0xFF2B2B2B), width: 1),
+              ),
+              child: Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF1A1A1A),
+                ),
+              ),
+            ),
+            if (selected)
+              Positioned(
+                right: -1,
+                bottom: -1,
+                child: Container(
+                  width: 22,
+                  height: 22,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF6F26B),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: const Color(0xFF1A1A1A), width: 2),
+                  ),
+                  child: const Icon(
+                    Icons.check,
+                    size: 14,
+                    color: Color(0xFF1A1A1A),
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -323,4 +483,13 @@ class _ActionButton extends StatelessWidget {
       ),
     );
   }
+}
+
+Color _colorFromHex(String hex) {
+  final String normalized = hex.replaceAll('#', '');
+  if (normalized.length != 6) {
+    return const Color(0xFF000000);
+  }
+  final int value = int.parse(normalized, radix: 16);
+  return Color(0xFF000000 | value);
 }

@@ -1,13 +1,10 @@
-import 'dart:ui';
+﻿import 'dart:ui';
 
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:pixelpad/core/app/navigation.dart';
 import 'package:pixelpad/core/theme/app_theme.dart';
-
-const String _presetBrandKey = 'bean_preset_brand';
-const String _presetCountKey = 'bean_preset_count';
+import 'package:pixelpad/features/make/data/bean_preset_storage.dart';
 
 const List<String> _beanBrands = [
   'Coco',
@@ -40,8 +37,8 @@ class BeanPresetScreen extends StatefulWidget {
 class _BeanPresetScreenState extends State<BeanPresetScreen> {
   late final PageController _brandController;
   late final PageController _countController;
-  int _brandIndex = _beanBrands.indexOf('MARD');
-  int _countIndex = _colorCounts.indexOf(144);
+  int _brandIndex = _beanBrands.indexOf(BeanPresetStorage.defaultBrand);
+  int _countIndex = _colorCounts.indexOf(BeanPresetStorage.defaultCount);
 
   @override
   void initState() {
@@ -79,25 +76,15 @@ class _BeanPresetScreenState extends State<BeanPresetScreen> {
   }
 
   Future<void> _loadPreset() async {
-    final SharedPreferences prefs = await SharedPreferences.getInstance();
-    final String? savedBrand = prefs.getString(_presetBrandKey);
-    final int? savedCount = prefs.getInt(_presetCountKey);
+    final BeanPreset preset = await BeanPresetStorage.load();
+    int nextBrand = _beanBrands.indexOf(preset.brand);
+    int nextCount = _colorCounts.indexOf(preset.count);
 
-    int nextBrand = _brandIndex;
-    int nextCount = _countIndex;
-
-    if (savedBrand != null) {
-      final int index = _beanBrands.indexOf(savedBrand);
-      if (index >= 0) {
-        nextBrand = index;
-      }
+    if (nextBrand < 0) {
+      nextBrand = _brandIndex;
     }
-
-    if (savedCount != null) {
-      final int index = _colorCounts.indexOf(savedCount);
-      if (index >= 0) {
-        nextCount = index;
-      }
+    if (nextCount < 0) {
+      nextCount = _countIndex;
     }
 
     if (!mounted) return;
@@ -110,9 +97,11 @@ class _BeanPresetScreenState extends State<BeanPresetScreen> {
   }
 
   Future<void> _savePreset() async {
-    final SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_presetBrandKey, _beanBrands[_brandIndex]);
-    await prefs.setInt(_presetCountKey, _colorCounts[_countIndex]);
+    final BeanPreset preset = BeanPreset(
+      brand: _beanBrands[_brandIndex],
+      count: _colorCounts[_countIndex],
+    );
+    await BeanPresetStorage.save(preset);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('已保存预设')),
