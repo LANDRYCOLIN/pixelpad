@@ -280,6 +280,8 @@ class _ParameterCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    const double axisLabelWidth = 26;
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
@@ -305,7 +307,7 @@ class _ParameterCard extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                const _YAxisLabels(),
+                const _YAxisLabels(width: axisLabelWidth),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Row(
@@ -324,21 +326,23 @@ class _ParameterCard extends StatelessWidget {
           Divider(color: AppColors.white.withValues(alpha: 0.4), height: 1),
           const SizedBox(height: 10),
           Row(
-            children: metrics
-                .map(
-                  (metric) => Expanded(
-                    child: Text(
-                      metric.label,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFFF9F871),
-                      ),
+            children: [
+              const SizedBox(width: axisLabelWidth),
+              const SizedBox(width: 12),
+              ...metrics.map<Widget>(
+                (metric) => Expanded(
+                  child: Text(
+                    metric.label,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFFF9F871),
                     ),
                   ),
-                )
-                .toList(),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -347,13 +351,16 @@ class _ParameterCard extends StatelessWidget {
 }
 
 class _YAxisLabels extends StatelessWidget {
-  const _YAxisLabels();
+  final double width;
+
+  const _YAxisLabels({required this.width});
 
   @override
   Widget build(BuildContext context) {
-    return const SizedBox(
+    return SizedBox(
+      width: width,
       height: 140,
-      child: Column(
+      child: const Column(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(

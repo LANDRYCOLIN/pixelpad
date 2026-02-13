@@ -1,4 +1,4 @@
-﻿name: pixelpad
+name: pixelpad
 description: "A new Flutter project."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
@@ -37,6 +37,8 @@ dependencies:
   flutter_svg: ^2.0.10
   http: ^1.2.2
   shared_preferences: ^2.2.3
+  image_editor: ^1.6.0
+  image_picker: ^1.1.2
 
 dev_dependencies:
   flutter_test:
@@ -97,5 +99,6 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
 
 
