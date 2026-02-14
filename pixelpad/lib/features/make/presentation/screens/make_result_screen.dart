@@ -94,12 +94,12 @@ class _MakeResultScreenState extends State<MakeResultScreen> {
         _selected.add(id);
       }
     });
-
-    if (_selected.length == 1) {
-      _fetchRenderImage(colorId: _selected.first);
-    } else {
+    if (_selected.isEmpty) {
       _fetchRenderImage();
+      return;
     }
+    final List<String> selectedIds = _selected.toList()..sort();
+    _fetchRenderImage(colorId: selectedIds.join(','));
   }
 
   @override
@@ -133,9 +133,13 @@ class _MakeResultScreenState extends State<MakeResultScreen> {
                             : _imageBytes != null
                                 ? ClipRRect(
                                     borderRadius: BorderRadius.circular(18),
-                                    child: Image.memory(
-                                      _imageBytes!,
-                                      fit: BoxFit.contain,
+                                    child: SizedBox.expand(
+                                      child: Image.memory(
+                                        _imageBytes!,
+                                        fit: BoxFit.contain,
+                                        filterQuality: FilterQuality.none,
+                                        isAntiAlias: false,
+                                      ),
                                     ),
                                   )
                                 : Text(
