@@ -877,6 +877,24 @@ class _ImageEditorScreenState extends State<_ImageEditorScreen> {
     }
   }
 
+  Future<Uint8List?> _buildCroppedBytes(Uint8List source) async {
+    final ImageEditorOption option = ImageEditorOption();
+    option.addOption(
+      ClipOption.fromRect(
+        ui.Rect.fromLTWH(
+          _cropRectPx.left,
+          _cropRectPx.top,
+          _cropRectPx.width,
+          _cropRectPx.height,
+        ),
+      ),
+    );
+    return ImageEditor.editImage(
+      image: source,
+      imageEditorOption: option,
+    );
+  }
+
   Future<void> _applyScale() async {
     final ui.Image image = await _decodeImage(_displayBytes);
     final int width = (image.width * 0.8).round();
@@ -952,14 +970,18 @@ class _ImageEditorScreenState extends State<_ImageEditorScreen> {
     if (_processing || _uploading) {
       return;
     }
-    if (_cropDirty) {
-      await _applyCrop();
-    }
     setState(() {
       _uploading = true;
     });
     try {
-      final _ProcessResult result = await _uploadToBackend(_displayBytes);
+      Uint8List uploadBytes = _displayBytes;
+      if (_cropDirty) {
+        final Uint8List? cropped = await _buildCroppedBytes(uploadBytes);
+        if (cropped != null) {
+          uploadBytes = cropped;
+        }
+      }
+      final _ProcessResult result = await _uploadToBackend(uploadBytes);
       if (!mounted) return;
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
