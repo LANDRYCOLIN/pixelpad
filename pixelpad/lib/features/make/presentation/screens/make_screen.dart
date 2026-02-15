@@ -592,7 +592,7 @@ class _OptionButton extends StatelessWidget {
             child: Text(
               label,
               style: TextStyle(
-                fontFamily: 'League Spartan',
+                fontFamily: 'Outfit',
                 fontSize: 20,
                 height: 26 / 20,
                 letterSpacing: -0.1,
@@ -686,6 +686,11 @@ class _ImageEditorScreenState extends State<_ImageEditorScreen> {
   bool _processing = false;
   bool _uploading = false;
   bool _cropDirty = false;
+  bool _isCropping = false;
+  bool _hasCropRect = false;
+  bool _isDrawingCrop = false;
+  bool _isMovingCrop = false;
+  Offset? _drawStartPx;
   Size _imageSize = const Size(1, 1);
   Rect _cropRectPx = const Rect.fromLTWH(0, 0, 1, 1);
 
@@ -741,6 +746,10 @@ class _ImageEditorScreenState extends State<_ImageEditorScreen> {
     final double left = (_imageSize.width - size) / 2;
     final double top = (_imageSize.height - size) / 2;
     _cropRectPx = Rect.fromLTWH(left, top, size, size);
+    _hasCropRect = false;
+    _isDrawingCrop = false;
+    _isMovingCrop = false;
+    _drawStartPx = null;
   }
 
   void _updateCropForHandle(_CropHandle handle, Offset delta, Rect imageRect) {
@@ -813,6 +822,136 @@ class _ImageEditorScreenState extends State<_ImageEditorScreen> {
     setState(() {
       _cropRectPx = Rect.fromLTWH(newLeft, newTop, size, size);
       _cropDirty = true;
+      _hasCropRect = true;
+    });
+  }
+
+  Offset _viewToImage(Offset viewPoint, Rect imageRect) {
+    final double scale = imageRect.width / _imageSize.width;
+    return Offset(
+      (viewPoint.dx - imageRect.left) / scale,
+      (viewPoint.dy - imageRect.top) / scale,
+    );
+  }
+
+  Offset _localInImageRectToImage(Offset localPoint, Rect imageRect) {
+    final double scale = imageRect.width / _imageSize.width;
+    return Offset(
+      localPoint.dx / scale,
+      localPoint.dy / scale,
+    );
+  }
+
+  Offset _clampImagePoint(Offset pointPx) {
+    return Offset(
+      pointPx.dx.clamp(0.0, _imageSize.width),
+      pointPx.dy.clamp(0.0, _imageSize.height),
+    );
+  }
+
+  void _startCropDrawing(Offset viewPoint, Rect imageRect) {
+    if (!_isCropping) {
+      return;
+    }
+    final Offset startPx =
+        _clampImagePoint(_localInImageRectToImage(viewPoint, imageRect));
+    setState(() {
+      _drawStartPx = startPx;
+      _isDrawingCrop = true;
+      _hasCropRect = true;
+      _cropRectPx = Rect.fromLTWH(startPx.dx, startPx.dy, 0, 0);
+      _cropDirty = true;
+    });
+  }
+
+  void _updateCropDrawing(Offset viewPoint, Rect imageRect) {
+    if (!_isDrawingCrop || _drawStartPx == null) {
+      return;
+    }
+    final Offset currentPx =
+        _clampImagePoint(_localInImageRectToImage(viewPoint, imageRect));
+    final double dx = currentPx.dx - _drawStartPx!.dx;
+    final double dy = currentPx.dy - _drawStartPx!.dy;
+    if (dx <= 0 || dy <= 0) {
+      setState(() {
+        _cropRectPx = Rect.fromLTWH(
+          _drawStartPx!.dx,
+          _drawStartPx!.dy,
+          0,
+          0,
+        );
+      });
+      return;
+    }
+    double size = min(dx, dy);
+    size = min(size, _imageSize.width - _drawStartPx!.dx);
+    size = min(size, _imageSize.height - _drawStartPx!.dy);
+    setState(() {
+      _cropRectPx = Rect.fromLTWH(
+        _drawStartPx!.dx,
+        _drawStartPx!.dy,
+        size,
+        size,
+      );
+    });
+  }
+
+  void _finishCropDrawing() {
+    if (!_isDrawingCrop) {
+      return;
+    }
+    final double minSize =
+        min(_imageSize.width, _imageSize.height) * _minCropSizeFactor;
+    if (_cropRectPx.width < minSize) {
+      setState(() {
+        _hasCropRect = false;
+        _cropRectPx = const Rect.fromLTWH(0, 0, 1, 1);
+        _cropDirty = false;
+      });
+    }
+    setState(() {
+      _isDrawingCrop = false;
+      _drawStartPx = null;
+    });
+  }
+
+  void _startCropMove(Offset viewPoint, Rect imageRect) {
+    if (!_hasCropRect || !_isCropping) {
+      return;
+    }
+    setState(() {
+      _isMovingCrop = true;
+    });
+  }
+
+  void _updateCropMove(Offset delta, Rect imageRect) {
+    if (!_isMovingCrop) {
+      return;
+    }
+    final double scale = imageRect.width / _imageSize.width;
+    final double dx = delta.dx / scale;
+    final double dy = delta.dy / scale;
+    double newLeft = _cropRectPx.left + dx;
+    double newTop = _cropRectPx.top + dy;
+    newLeft = newLeft.clamp(0.0, _imageSize.width - _cropRectPx.width);
+    newTop = newTop.clamp(0.0, _imageSize.height - _cropRectPx.height);
+    setState(() {
+      _cropRectPx = Rect.fromLTWH(
+        newLeft,
+        newTop,
+        _cropRectPx.width,
+        _cropRectPx.height,
+      );
+      _cropDirty = true;
+    });
+  }
+
+  void _finishCropMove() {
+    if (!_isMovingCrop) {
+      return;
+    }
+    setState(() {
+      _isMovingCrop = false;
     });
   }
 
@@ -858,6 +997,9 @@ class _ImageEditorScreenState extends State<_ImageEditorScreen> {
   }
 
   Future<void> _applyCrop() async {
+    if (!_hasCropRect) {
+      return;
+    }
     final ImageEditorOption option = ImageEditorOption();
     option.addOption(
       ClipOption.fromRect(
@@ -918,6 +1060,7 @@ class _ImageEditorScreenState extends State<_ImageEditorScreen> {
       _editedBytes = null;
       _resetCropRect();
       _cropDirty = false;
+      _isCropping = false;
     });
     _updateImageSize(widget.bytes);
   }
@@ -1022,6 +1165,8 @@ class _ImageEditorScreenState extends State<_ImageEditorScreen> {
                   );
                   final Rect imageRect = _imageRectFor(container);
                   final Rect cropRect = _cropRectInView(imageRect);
+                  final bool showCrop =
+                      _isCropping && _hasCropRect && _cropRectPx.width > 0;
 
                   return Stack(
                     children: [
@@ -1032,38 +1177,89 @@ class _ImageEditorScreenState extends State<_ImageEditorScreen> {
                           fit: BoxFit.contain,
                         ),
                       ),
-                      Positioned.fill(
-                        child: CustomPaint(
-                          painter: _CropOverlayPainter(
-                            imageRect: imageRect,
-                            cropRect: cropRect,
+                      if (_isCropping)
+                        Positioned.fromRect(
+                          rect: imageRect,
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.translucent,
+                            onPanStart: (details) {
+                              if (!_hasCropRect) {
+                                _startCropDrawing(details.localPosition, imageRect);
+                              }
+                            },
+                            onPanUpdate: (details) {
+                              if (_isDrawingCrop) {
+                                _updateCropDrawing(details.localPosition, imageRect);
+                              }
+                            },
+                            onPanEnd: (_) => _finishCropDrawing(),
                           ),
                         ),
-                      ),
-                      _CropHandleWidget(
-                        position: cropRect.topLeft,
-                        size: _handleSize,
-                        onDrag: (delta) =>
-                            _updateCropForHandle(_CropHandle.topLeft, delta, imageRect),
-                      ),
-                      _CropHandleWidget(
-                        position: cropRect.topRight,
-                        size: _handleSize,
-                        onDrag: (delta) =>
-                            _updateCropForHandle(_CropHandle.topRight, delta, imageRect),
-                      ),
-                      _CropHandleWidget(
-                        position: cropRect.bottomLeft,
-                        size: _handleSize,
-                        onDrag: (delta) =>
-                            _updateCropForHandle(_CropHandle.bottomLeft, delta, imageRect),
-                      ),
-                      _CropHandleWidget(
-                        position: cropRect.bottomRight,
-                        size: _handleSize,
-                        onDrag: (delta) =>
-                            _updateCropForHandle(_CropHandle.bottomRight, delta, imageRect),
-                      ),
+                      if (_isCropping)
+                        Positioned.fill(
+                          child: IgnorePointer(
+                            child: CustomPaint(
+                              painter: _CropOverlayPainter(
+                                imageRect: imageRect,
+                                cropRect: showCrop ? cropRect : null,
+                              ),
+                            ),
+                          ),
+                        ),
+                      if (showCrop)
+                        Positioned.fromRect(
+                          rect: cropRect,
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.translucent,
+                            onPanStart: (details) => _startCropMove(
+                              cropRect.topLeft + details.localPosition,
+                              imageRect,
+                            ),
+                            onPanUpdate: (details) =>
+                                _updateCropMove(details.delta, imageRect),
+                            onPanEnd: (_) => _finishCropMove(),
+                          ),
+                        ),
+                      if (showCrop)
+                        _CropHandleWidget(
+                          position: cropRect.topLeft,
+                          size: _handleSize,
+                          onDrag: (delta) => _updateCropForHandle(
+                            _CropHandle.topLeft,
+                            delta,
+                            imageRect,
+                          ),
+                        ),
+                      if (showCrop)
+                        _CropHandleWidget(
+                          position: cropRect.topRight,
+                          size: _handleSize,
+                          onDrag: (delta) => _updateCropForHandle(
+                            _CropHandle.topRight,
+                            delta,
+                            imageRect,
+                          ),
+                        ),
+                      if (showCrop)
+                        _CropHandleWidget(
+                          position: cropRect.bottomLeft,
+                          size: _handleSize,
+                          onDrag: (delta) => _updateCropForHandle(
+                            _CropHandle.bottomLeft,
+                            delta,
+                            imageRect,
+                          ),
+                        ),
+                      if (showCrop)
+                        _CropHandleWidget(
+                          position: cropRect.bottomRight,
+                          size: _handleSize,
+                          onDrag: (delta) => _updateCropForHandle(
+                            _CropHandle.bottomRight,
+                            delta,
+                            imageRect,
+                          ),
+                        ),
                     ],
                   );
                 },
@@ -1079,7 +1275,26 @@ class _ImageEditorScreenState extends State<_ImageEditorScreen> {
                   children: [
                     _EditorActionButton(
                       label: '裁剪',
-                      onTap: _processing ? null : _applyCrop,
+                      onTap: _processing
+                          ? null
+                          : () {
+                              if (!_isCropping) {
+                                setState(() {
+                                  _isCropping = true;
+                                  _hasCropRect = false;
+                                  _cropDirty = false;
+                                });
+                                return;
+                              }
+                              if (_hasCropRect) {
+                                _applyCrop();
+                                if (mounted) {
+                                  setState(() {
+                                    _isCropping = false;
+                                  });
+                                }
+                              }
+                            },
                     ),
                     const SizedBox(width: 8),
                     _EditorActionButton(
@@ -1130,7 +1345,7 @@ enum _CropHandle {
 
 class _CropOverlayPainter extends CustomPainter {
   final Rect imageRect;
-  final Rect cropRect;
+  final Rect? cropRect;
 
   const _CropOverlayPainter({
     required this.imageRect,
@@ -1144,17 +1359,21 @@ class _CropOverlayPainter extends CustomPainter {
       Offset.zero & size,
       Paint()..color = Colors.black.withValues(alpha: 0.55),
     );
-    canvas.drawRect(
-      cropRect,
-      Paint()..blendMode = BlendMode.clear,
-    );
+    if (cropRect != null && cropRect!.width > 0 && cropRect!.height > 0) {
+      canvas.drawRect(
+        cropRect!,
+        Paint()..blendMode = BlendMode.clear,
+      );
+    }
     canvas.restore();
 
-    final Paint borderPaint = Paint()
-      ..color = const Color(0xFFF9F871)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2;
-    canvas.drawRect(cropRect, borderPaint);
+    if (cropRect != null && cropRect!.width > 0 && cropRect!.height > 0) {
+      final Paint borderPaint = Paint()
+        ..color = const Color(0xFFF9F871)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2;
+      canvas.drawRect(cropRect!, borderPaint);
+    }
   }
 
   @override

@@ -280,65 +280,78 @@ class _ParameterCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const double axisLabelWidth = 26;
+    const double scale = 2 / 3;
+    const double fontScale = 0.9;
+    const double chartInset = 6 * scale;
+    const double axisLabelWidth = 26 * scale;
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+      padding: const EdgeInsets.fromLTRB(
+        16 * scale,
+        14 * scale,
+        16 * scale,
+        16 * scale,
+      ),
       decoration: BoxDecoration(
         color: const Color(0xFF1F1F1F),
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(18 * scale),
         border: Border.all(color: const Color(0xFF6A6A6A), width: 1),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            '参数',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFFF9F871),
-            ),
-          ),
-          const SizedBox(height: 12),
           SizedBox(
-            height: 140,
+            height: 140 * scale,
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                const _YAxisLabels(width: axisLabelWidth),
-                const SizedBox(width: 12),
+                const _YAxisLabels(
+                  width: axisLabelWidth,
+                  height: 140 * scale,
+                  scale: fontScale,
+                ),
+                const SizedBox(width: 12 * scale),
                 Expanded(
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: metrics.map((metric) {
-                      return Expanded(
-                        child: _MetricBar(metric: metric),
-                      );
-                    }).toList(),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: chartInset),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: metrics.map((metric) {
+                        return Expanded(
+                          child: _MetricBar(metric: metric, scale: scale),
+                        );
+                      }).toList(),
+                    ),
                   ),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 10 * scale),
           Divider(color: AppColors.white.withValues(alpha: 0.4), height: 1),
-          const SizedBox(height: 10),
+          const SizedBox(height: 10 * scale),
           Row(
             children: [
               const SizedBox(width: axisLabelWidth),
-              const SizedBox(width: 12),
-              ...metrics.map<Widget>(
-                (metric) => Expanded(
-                  child: Text(
-                    metric.label,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFFF9F871),
-                    ),
+              const SizedBox(width: 12 * scale),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: chartInset),
+                  child: Row(
+                    children: metrics.map<Widget>(
+                      (metric) => Expanded(
+                        child: Text(
+                          metric.label,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontSize: 12 * fontScale,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFFF9F871),
+                          ),
+                        ),
+                      ),
+                    ).toList(),
                   ),
                 ),
               ),
@@ -352,21 +365,27 @@ class _ParameterCard extends StatelessWidget {
 
 class _YAxisLabels extends StatelessWidget {
   final double width;
+  final double height;
+  final double scale;
 
-  const _YAxisLabels({required this.width});
+  const _YAxisLabels({
+    required this.width,
+    required this.height,
+    required this.scale,
+  });
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
       width: width,
-      height: 140,
-      child: const Column(
+      height: height,
+      child: Column(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(
             '100',
             style: TextStyle(
-              fontSize: 10,
+              fontSize: 10 * scale,
               fontWeight: FontWeight.w600,
               color: Color(0xFFF9F871),
             ),
@@ -374,7 +393,7 @@ class _YAxisLabels extends StatelessWidget {
           Text(
             '75',
             style: TextStyle(
-              fontSize: 10,
+              fontSize: 10 * scale,
               fontWeight: FontWeight.w600,
               color: Color(0xFFF9F871),
             ),
@@ -382,7 +401,7 @@ class _YAxisLabels extends StatelessWidget {
           Text(
             '50',
             style: TextStyle(
-              fontSize: 10,
+              fontSize: 10 * scale,
               fontWeight: FontWeight.w600,
               color: Color(0xFFF9F871),
             ),
@@ -390,7 +409,7 @@ class _YAxisLabels extends StatelessWidget {
           Text(
             '25',
             style: TextStyle(
-              fontSize: 10,
+              fontSize: 10 * scale,
               fontWeight: FontWeight.w600,
               color: Color(0xFFF9F871),
             ),
@@ -398,7 +417,7 @@ class _YAxisLabels extends StatelessWidget {
           Text(
             '0',
             style: TextStyle(
-              fontSize: 10,
+              fontSize: 10 * scale,
               fontWeight: FontWeight.w600,
               color: Color(0xFFF9F871),
             ),
@@ -411,8 +430,9 @@ class _YAxisLabels extends StatelessWidget {
 
 class _MetricBar extends StatelessWidget {
   final DeviceMetric metric;
+  final double scale;
 
-  const _MetricBar({required this.metric});
+  const _MetricBar({required this.metric, required this.scale});
 
   @override
   Widget build(BuildContext context) {
@@ -428,7 +448,7 @@ class _MetricBar extends StatelessWidget {
               width: 14,
               decoration: BoxDecoration(
                 color: const Color(0xFFE3E3E3),
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(8 * scale),
               ),
               child: Align(
                 alignment: Alignment.bottomCenter,
@@ -437,7 +457,7 @@ class _MetricBar extends StatelessWidget {
                   child: Container(
                     decoration: BoxDecoration(
                       color: const Color(0xFFF9F871),
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(8 * scale),
                     ),
                   ),
                 ),
@@ -478,7 +498,7 @@ class _UsageRecordCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: AppColors.header,
+        color: const Color(0xFF8D6CFC),
         borderRadius: BorderRadius.circular(14),
       ),
       child: Row(

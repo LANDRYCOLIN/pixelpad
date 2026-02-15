@@ -99,6 +99,31 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+  fonts:
+    - family: Geometos
+      fonts:
+        - asset: assets/fonts/geometos/Geometos.ttf
+    - family: Outfit
+      fonts:
+        - asset: assets/fonts/outfit/OutfitExtraLight.ttf
+          weight: 200
+        - asset: assets/fonts/outfit/OutfitLight1.ttf
+          weight: 300
+        - asset: assets/fonts/outfit/OutfitRegular.ttf
+          weight: 400
+        - asset: assets/fonts/outfit/OutfitMedium.ttf
+          weight: 500
+        - asset: assets/fonts/outfit/OutfitSemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/outfit/OutfitBold.ttf
+          weight: 700
+        - asset: assets/fonts/outfit/OutfitExtraBold.ttf
+          weight: 800
+        - asset: assets/fonts/outfit/OutfitBlack.ttf
+          weight: 900
+    - family: OPPO Sans 4.0
+      fonts:
+        - asset: assets/fonts/OPPO_Sans_4.0/OPPO_Sans_4.0/OPPO Sans 4.0.ttf
 
 
 
