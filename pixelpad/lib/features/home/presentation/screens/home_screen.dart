@@ -108,7 +108,7 @@ class _HeaderIcon extends StatelessWidget {
   }
 }
 
-class _HomeBody extends StatelessWidget {
+class _HomeBody extends StatefulWidget {
   const _HomeBody({required this.animation});
 
   final Animation<double> animation;
@@ -123,6 +123,22 @@ class _HomeBody extends StatelessWidget {
     'assets/source/community-example7.png',
     'assets/source/community-example8.png',
   ];
+
+  @override
+  State<_HomeBody> createState() => _HomeBodyState();
+}
+
+class _HomeBodyState extends State<_HomeBody> {
+  late final List<bool> _featuredFlags;
+
+  @override
+  void initState() {
+    super.initState();
+    _featuredFlags = List<bool>.generate(
+      _HomeBody._communityImages.length,
+      (index) => index.isEven,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -158,7 +174,7 @@ class _HomeBody extends StatelessWidget {
         const SizedBox(height: 12),
         _RefreshFadeSection(
           index: 0,
-          animation: animation,
+          animation: widget.animation,
           child: LayoutBuilder(
             builder: (context, constraints) {
               const double spacing = 12;
@@ -167,21 +183,26 @@ class _HomeBody extends StatelessWidget {
               final List<Widget> rightColumn = [];
 
               for (int index = 0;
-                  index < _communityImages.length;
+                  index < _HomeBody._communityImages.length;
                   index += 1) {
                 final Widget card = _CommunityCard(
-                  image: _communityImages[index],
-                  featured: index.isEven,
+                  image: _HomeBody._communityImages[index],
+                  featured: _featuredFlags[index],
                   width: itemWidth,
+                  onToggleStar: () {
+                    setState(() {
+                      _featuredFlags[index] = !_featuredFlags[index];
+                    });
+                  },
                 );
                 if (index.isEven) {
                   leftColumn.add(card);
-                  if (index + 2 < _communityImages.length) {
+                  if (index + 2 < _HomeBody._communityImages.length) {
                     leftColumn.add(const SizedBox(height: spacing));
                   }
                 } else {
                   rightColumn.add(card);
-                  if (index + 2 < _communityImages.length) {
+                  if (index + 2 < _HomeBody._communityImages.length) {
                     rightColumn.add(const SizedBox(height: spacing));
                   }
                 }
@@ -373,11 +394,13 @@ class _CommunityCard extends StatelessWidget {
   final String image;
   final bool featured;
   final double width;
+  final VoidCallback onToggleStar;
 
   const _CommunityCard({
     required this.image,
     required this.featured,
     required this.width,
+    required this.onToggleStar,
   });
 
   @override
@@ -448,16 +471,31 @@ class _CommunityCard extends StatelessWidget {
                   ),
                 ),
               ),
-              if (featured)
-                const Positioned(
-                  right: 10,
-                  top: 10,
-                  child: Icon(
-                    Icons.star_rounded,
-                    color: Color(0xFFF9F871),
-                    size: 20,
+              Positioned(
+                  right: 6,
+                  top: 6,
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: onToggleStar,
+                      borderRadius: BorderRadius.circular(10),
+                      child: Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: const Color(0xCC1E1E1E),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(
+                        featured ? Icons.star_rounded : Icons.star_border_rounded,
+                        color: featured
+                            ? const Color(0xFFF9F871)
+                            : const Color(0xFFDADADA),
+                        size: 18,
+                      ),
+                    ),
                   ),
                 ),
+              ),
             ],
           ),
         ),
