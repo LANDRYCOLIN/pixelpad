@@ -2,6 +2,7 @@ import 'dart:convert';
 
 class UserProfile {
   final int id;
+  final String userUuid;
   final String phone;
   final String username;
   final String password;
@@ -12,6 +13,7 @@ class UserProfile {
 
   const UserProfile({
     required this.id,
+    required this.userUuid,
     required this.phone,
     required this.username,
     required this.password,
@@ -24,6 +26,7 @@ class UserProfile {
   factory UserProfile.initial() {
     return UserProfile(
       id: 1,
+      userUuid: '',
       phone: '13800000000',
       username: 'PixelPad',
       password: '123456',
@@ -36,6 +39,7 @@ class UserProfile {
 
   UserProfile copyWith({
     int? id,
+    String? userUuid,
     String? phone,
     String? username,
     String? password,
@@ -46,6 +50,7 @@ class UserProfile {
   }) {
     return UserProfile(
       id: id ?? this.id,
+      userUuid: userUuid ?? this.userUuid,
       phone: phone ?? this.phone,
       username: username ?? this.username,
       password: password ?? this.password,
@@ -59,6 +64,7 @@ class UserProfile {
   Map<String, dynamic> toJson() {
     return {
       'id': id,
+      'user_uuid': userUuid,
       'phone': phone,
       'username': username,
       'password': password,
@@ -75,16 +81,19 @@ class UserProfile {
   }
 
   static UserProfile fromMap(Map<String, dynamic> data) {
+    final dynamic avatarModeValue = data['avatarMode'] ?? data['avatar_mode'];
     return UserProfile(
       id: (data['id'] as num?)?.toInt() ?? 1,
+      userUuid: data['user_uuid'] as String? ?? '',
       phone: data['phone'] as String? ?? '13800000000',
       username: data['username'] as String? ?? 'PixelPad',
-      password: data['password'] as String? ?? '123456',
+      password: data['password'] as String? ?? '',
       email: data['email'] as String? ?? 'pixelpad@example.com',
-      birthday: _parseDate(data['birthday'] as String?) ?? DateTime(2006, 11, 15),
+      birthday:
+          _parseDate(data['birthday'] as String?) ?? DateTime(2006, 11, 15),
       mbti: data['mbti'] as String? ?? 'INFP',
       avatarMode: UserAvatarMode.values.firstWhere(
-        (mode) => mode.name == data['avatarMode'],
+        (mode) => mode.name == avatarModeValue,
         orElse: () => UserAvatarMode.logo,
       ),
     );
@@ -112,7 +121,4 @@ class UserProfile {
   }
 }
 
-enum UserAvatarMode {
-  logo,
-  initials,
-}
+enum UserAvatarMode { logo, initials }

@@ -1,7 +1,6 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:math';
 import 'dart:convert';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -46,7 +45,8 @@ class _ProcessResult {
   });
 
   factory _ProcessResult.fromJson(Map<String, dynamic> json) {
-    final List<dynamic> rawColors = (json['detected_colors'] as List<dynamic>? ?? []);
+    final List<dynamic> rawColors =
+        (json['detected_colors'] as List<dynamic>? ?? []);
     return _ProcessResult(
       sessionId: json['session_id'] as String? ?? '',
       totalPixels: (json['total_pixels'] as num?)?.toInt() ?? 0,
@@ -97,11 +97,7 @@ class MakeScreen extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: const [
-            _MakeHeader(),
-            SizedBox(height: 18),
-            _MakeBody(),
-          ],
+          children: const [_MakeHeader(), SizedBox(height: 18), _MakeBody()],
         ),
       ),
     );
@@ -147,11 +143,7 @@ class _HeaderIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SvgPicture.asset(
-      asset,
-      width: size,
-      height: size,
-    );
+    return SvgPicture.asset(asset, width: size, height: size);
   }
 }
 
@@ -252,11 +244,7 @@ class _MakeOptionCard extends StatelessWidget {
                     children: [
                       Row(
                         children: [
-                          SvgPicture.asset(
-                            icon,
-                            width: 20,
-                            height: 20,
-                          ),
+                          SvgPicture.asset(icon, width: 20, height: 20),
                           const SizedBox(width: 8),
                           Text(
                             title,
@@ -285,8 +273,9 @@ class _MakeOptionCard extends StatelessWidget {
                 width: 120,
                 height: 86,
                 child: ClipRRect(
-                  borderRadius:
-                      const BorderRadius.horizontal(right: Radius.circular(18)),
+                  borderRadius: const BorderRadius.horizontal(
+                    right: Radius.circular(18),
+                  ),
                   child: Container(
                     color: Colors.transparent,
                     alignment: Alignment.centerRight,
@@ -482,9 +471,7 @@ class _UploadOptionsSheet extends StatelessWidget {
 class _PresetHintCard extends StatelessWidget {
   final VoidCallback onSettingsTap;
 
-  const _PresetHintCard({
-    required this.onSettingsTap,
-  });
+  const _PresetHintCard({required this.onSettingsTap});
 
   @override
   Widget build(BuildContext context) {
@@ -655,10 +642,7 @@ class _GalleryPickerScreen extends StatelessWidget {
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(16),
-                  child: Image.asset(
-                    asset,
-                    fit: BoxFit.cover,
-                  ),
+                  child: Image.asset(asset, fit: BoxFit.cover),
                 ),
               ),
             ),
@@ -722,7 +706,11 @@ class _ImageEditorScreenState extends State<_ImageEditorScreen> {
   }
 
   Rect _imageRectFor(Size container) {
-    final FittedSizes fitted = applyBoxFit(BoxFit.contain, _imageSize, container);
+    final FittedSizes fitted = applyBoxFit(
+      BoxFit.contain,
+      _imageSize,
+      container,
+    );
     final Size destination = fitted.destination;
     final Offset offset = Offset(
       (container.width - destination.width) / 2,
@@ -759,7 +747,8 @@ class _ImageEditorScreenState extends State<_ImageEditorScreen> {
     final double scale = imageRect.width / _imageSize.width;
     final double dx = delta.dx / scale;
     final double dy = delta.dy / scale;
-    final double minSize = min(_imageSize.width, _imageSize.height) * _minCropSizeFactor;
+    final double minSize =
+        min(_imageSize.width, _imageSize.height) * _minCropSizeFactor;
 
     double left = _cropRectPx.left;
     double top = _cropRectPx.top;
@@ -810,7 +799,10 @@ class _ImageEditorScreenState extends State<_ImageEditorScreen> {
         break;
       case _CropHandle.bottomRight:
         size = max(right - left, bottom - top);
-        size = size.clamp(minSize, min(_imageSize.width - left, _imageSize.height - top));
+        size = size.clamp(
+          minSize,
+          min(_imageSize.width - left, _imageSize.height - top),
+        );
         newLeft = left;
         newTop = top;
         break;
@@ -826,20 +818,9 @@ class _ImageEditorScreenState extends State<_ImageEditorScreen> {
     });
   }
 
-  Offset _viewToImage(Offset viewPoint, Rect imageRect) {
-    final double scale = imageRect.width / _imageSize.width;
-    return Offset(
-      (viewPoint.dx - imageRect.left) / scale,
-      (viewPoint.dy - imageRect.top) / scale,
-    );
-  }
-
   Offset _localInImageRectToImage(Offset localPoint, Rect imageRect) {
     final double scale = imageRect.width / _imageSize.width;
-    return Offset(
-      localPoint.dx / scale,
-      localPoint.dy / scale,
-    );
+    return Offset(localPoint.dx / scale, localPoint.dy / scale);
   }
 
   Offset _clampImagePoint(Offset pointPx) {
@@ -853,8 +834,9 @@ class _ImageEditorScreenState extends State<_ImageEditorScreen> {
     if (!_isCropping) {
       return;
     }
-    final Offset startPx =
-        _clampImagePoint(_localInImageRectToImage(viewPoint, imageRect));
+    final Offset startPx = _clampImagePoint(
+      _localInImageRectToImage(viewPoint, imageRect),
+    );
     setState(() {
       _drawStartPx = startPx;
       _isDrawingCrop = true;
@@ -868,18 +850,14 @@ class _ImageEditorScreenState extends State<_ImageEditorScreen> {
     if (!_isDrawingCrop || _drawStartPx == null) {
       return;
     }
-    final Offset currentPx =
-        _clampImagePoint(_localInImageRectToImage(viewPoint, imageRect));
+    final Offset currentPx = _clampImagePoint(
+      _localInImageRectToImage(viewPoint, imageRect),
+    );
     final double dx = currentPx.dx - _drawStartPx!.dx;
     final double dy = currentPx.dy - _drawStartPx!.dy;
     if (dx <= 0 || dy <= 0) {
       setState(() {
-        _cropRectPx = Rect.fromLTWH(
-          _drawStartPx!.dx,
-          _drawStartPx!.dy,
-          0,
-          0,
-        );
+        _cropRectPx = Rect.fromLTWH(_drawStartPx!.dx, _drawStartPx!.dy, 0, 0);
       });
       return;
     }
@@ -988,11 +966,14 @@ class _ImageEditorScreenState extends State<_ImageEditorScreen> {
     if (result != null) {
       await _updateImageSize(result);
     }
+    if (!mounted) {
+      return;
+    }
 
     if (error != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('处理失败，请重试')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('处理失败，请重试')));
     }
   }
 
@@ -1031,10 +1012,7 @@ class _ImageEditorScreenState extends State<_ImageEditorScreen> {
         ),
       ),
     );
-    return ImageEditor.editImage(
-      image: source,
-      imageEditorOption: option,
-    );
+    return ImageEditor.editImage(image: source, imageEditorOption: option);
   }
 
   Future<void> _applyScale() async {
@@ -1050,12 +1028,30 @@ class _ImageEditorScreenState extends State<_ImageEditorScreen> {
   Future<void> _applyGrayFilter() async {
     final ImageEditorOption option = ImageEditorOption();
     option.addOption(
-      ColorOption(matrix: <double>[
-        0.2126, 0.7152, 0.0722, 0, 0,
-        0.2126, 0.7152, 0.0722, 0, 0,
-        0.2126, 0.7152, 0.0722, 0, 0,
-        0, 0, 0, 1, 0,
-      ]),
+      ColorOption(
+        matrix: <double>[
+          0.2126,
+          0.7152,
+          0.0722,
+          0,
+          0,
+          0.2126,
+          0.7152,
+          0.0722,
+          0,
+          0,
+          0.2126,
+          0.7152,
+          0.0722,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+        ],
+      ),
     );
     await _runEdit(option);
   }
@@ -1063,12 +1059,30 @@ class _ImageEditorScreenState extends State<_ImageEditorScreen> {
   Future<void> _applySepiaFilter() async {
     final ImageEditorOption option = ImageEditorOption();
     option.addOption(
-      ColorOption(matrix: <double>[
-        0.393, 0.769, 0.189, 0, 0,
-        0.349, 0.686, 0.168, 0, 0,
-        0.272, 0.534, 0.131, 0, 0,
-        0, 0, 0, 1, 0,
-      ]),
+      ColorOption(
+        matrix: <double>[
+          0.393,
+          0.769,
+          0.189,
+          0,
+          0,
+          0.349,
+          0.686,
+          0.168,
+          0,
+          0,
+          0.272,
+          0.534,
+          0.131,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+        ],
+      ),
     );
     await _runEdit(option);
   }
@@ -1092,11 +1106,7 @@ class _ImageEditorScreenState extends State<_ImageEditorScreen> {
     request.fields['settings_file'] = preset.settingsFile;
     request.fields['max_colors'] = preset.count.toString();
     request.files.add(
-      http.MultipartFile.fromBytes(
-        'file',
-        bytes,
-        filename: 'upload.png',
-      ),
+      http.MultipartFile.fromBytes('file', bytes, filename: 'upload.png'),
     );
 
     final http.StreamedResponse streamed = await request.send();
@@ -1131,12 +1141,14 @@ class _ImageEditorScreenState extends State<_ImageEditorScreen> {
           builder: (context) => MakeResultScreen(
             sessionId: result.sessionId,
             detectedColors: result.detectedColors
-                .map((color) => DetectedColor(
-                      id: color.id,
-                      count: color.count,
-                      hex: color.hex,
-                      rgba: color.rgba,
-                    ))
+                .map(
+                  (color) => DetectedColor(
+                    id: color.id,
+                    count: color.count,
+                    hex: color.hex,
+                    rgba: color.rgba,
+                  ),
+                )
                 .toList(),
             width: result.width,
             height: result.height,
@@ -1145,9 +1157,9 @@ class _ImageEditorScreenState extends State<_ImageEditorScreen> {
       );
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('上传失败，请重试')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('上传失败，请重试')));
     } finally {
       if (mounted) {
         setState(() {
@@ -1166,10 +1178,7 @@ class _ImageEditorScreenState extends State<_ImageEditorScreen> {
         actions: [
           TextButton(
             onPressed: _processing ? null : _resetEdits,
-            child: const Text(
-              '还原',
-              style: TextStyle(color: Color(0xFFF9F871)),
-            ),
+            child: const Text('还原', style: TextStyle(color: Color(0xFFF9F871))),
           ),
         ],
       ),
@@ -1194,10 +1203,7 @@ class _ImageEditorScreenState extends State<_ImageEditorScreen> {
                     children: [
                       Positioned.fromRect(
                         rect: imageRect,
-                        child: Image.memory(
-                          _displayBytes,
-                          fit: BoxFit.contain,
-                        ),
+                        child: Image.memory(_displayBytes, fit: BoxFit.contain),
                       ),
                       if (_isCropping)
                         Positioned.fromRect(
@@ -1206,12 +1212,18 @@ class _ImageEditorScreenState extends State<_ImageEditorScreen> {
                             behavior: HitTestBehavior.translucent,
                             onPanStart: (details) {
                               if (!_hasCropRect) {
-                                _startCropDrawing(details.localPosition, imageRect);
+                                _startCropDrawing(
+                                  details.localPosition,
+                                  imageRect,
+                                );
                               }
                             },
                             onPanUpdate: (details) {
                               if (_isDrawingCrop) {
-                                _updateCropDrawing(details.localPosition, imageRect);
+                                _updateCropDrawing(
+                                  details.localPosition,
+                                  imageRect,
+                                );
                               }
                             },
                             onPanEnd: (_) => _finishCropDrawing(),
@@ -1339,7 +1351,9 @@ class _ImageEditorScreenState extends State<_ImageEditorScreen> {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    onPressed: (_processing || _uploading) ? null : _handleComplete,
+                    onPressed: (_processing || _uploading)
+                        ? null
+                        : _handleComplete,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFFF9F871),
                       foregroundColor: const Color(0xFF232323),
@@ -1358,21 +1372,14 @@ class _ImageEditorScreenState extends State<_ImageEditorScreen> {
     );
   }
 }
-enum _CropHandle {
-  topLeft,
-  topRight,
-  bottomLeft,
-  bottomRight,
-}
+
+enum _CropHandle { topLeft, topRight, bottomLeft, bottomRight }
 
 class _CropOverlayPainter extends CustomPainter {
   final Rect imageRect;
   final Rect? cropRect;
 
-  const _CropOverlayPainter({
-    required this.imageRect,
-    required this.cropRect,
-  });
+  const _CropOverlayPainter({required this.imageRect, required this.cropRect});
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -1382,10 +1389,7 @@ class _CropOverlayPainter extends CustomPainter {
       Paint()..color = Colors.black.withValues(alpha: 0.55),
     );
     if (cropRect != null && cropRect!.width > 0 && cropRect!.height > 0) {
-      canvas.drawRect(
-        cropRect!,
-        Paint()..blendMode = BlendMode.clear,
-      );
+      canvas.drawRect(cropRect!, Paint()..blendMode = BlendMode.clear);
     }
     canvas.restore();
 
@@ -1400,7 +1404,8 @@ class _CropOverlayPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _CropOverlayPainter oldDelegate) {
-    return oldDelegate.cropRect != cropRect || oldDelegate.imageRect != imageRect;
+    return oldDelegate.cropRect != cropRect ||
+        oldDelegate.imageRect != imageRect;
   }
 }
 
@@ -1440,10 +1445,7 @@ class _EditorActionButton extends StatelessWidget {
   final String label;
   final VoidCallback? onTap;
 
-  const _EditorActionButton({
-    required this.label,
-    required this.onTap,
-  });
+  const _EditorActionButton({required this.label, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -1468,10 +1470,3 @@ class _EditorActionButton extends StatelessWidget {
     );
   }
 }
-
-
-
-
-
-
-

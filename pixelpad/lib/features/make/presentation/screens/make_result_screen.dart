@@ -124,20 +124,22 @@ class _MakeResultScreenState extends State<MakeResultScreen> {
                           ? const Center(
                               child: CircularProgressIndicator(
                                 color: AppColors.primary,
-                              )
-                            : _imageBytes != null
-                                ? ClipRRect(
-                                    borderRadius: BorderRadius.circular(18),
-                                    child: SizedBox.expand(
-                                      child: Image.memory(
-                                        _imageBytes!,
-                                        fit: BoxFit.contain,
-                                        filterQuality: FilterQuality.none,
-                                        isAntiAlias: false,
-                                      ),
+                              ),
+                            )
+                          : _imageBytes != null
+                              ? ClipRRect(
+                                  borderRadius: BorderRadius.circular(18),
+                                  child: SizedBox.expand(
+                                    child: Image.memory(
+                                      _imageBytes!,
+                                      fit: BoxFit.contain,
+                                      filterQuality: FilterQuality.none,
+                                      isAntiAlias: false,
                                     ),
-                                  )
-                                : Text(
+                                  ),
+                                )
+                              : Center(
+                                  child: Text(
                                     _error ?? '暂无预览',
                                     style: const TextStyle(
                                       fontSize: 14,

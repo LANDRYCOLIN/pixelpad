@@ -37,6 +37,7 @@ dependencies:
   flutter_svg: ^2.0.10
   http: ^1.2.2
   shared_preferences: ^2.2.3
+  flutter_secure_storage: ^9.2.2
   image_editor: ^1.6.0
   image_picker: ^1.1.2
 

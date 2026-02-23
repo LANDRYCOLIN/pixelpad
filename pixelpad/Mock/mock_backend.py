@@ -315,7 +315,10 @@ class MockHandler(BaseHTTPRequestHandler):
         if parsed.path == "/render":
             data, _files = self._read_form()
             session_id = str(data.get("session_id", "")).strip()
-            color_id = str(data.get("color_id", "")).strip()
+            raw_color_id = str(data.get("color_id", "")).strip()
+            selected_ids = [
+                item.strip() for item in raw_color_id.split(",") if item.strip()
+            ]
             if not session_id or session_id not in SESSIONS:
                 self._send_json({"error": "invalid session_id"}, status=400)
                 return
@@ -326,20 +329,24 @@ class MockHandler(BaseHTTPRequestHandler):
                 _rgba_from_hex(color.get("hex"))
                 for color in session.get("detected_colors", [])
             ]
-            if color_id:
-                target = next(
-                    (
-                        _rgba_from_hex(color.get("hex"))
-                        for color in session.get("detected_colors", [])
-                        if color.get("id") == color_id
-                    ),
-                    None,
-                )
-                if not target:
-                    self._send_json({"error": "invalid color_id"}, status=400)
-                    return
-                seed = sum(bytearray((session_id + color_id).encode("utf-8")))
-                image = _isolated_png(width, height, target, seed)
+            if selected_ids:
+                colors_by_id = {
+                    str(color.get("id")): _rgba_from_hex(color.get("hex"))
+                    for color in session.get("detected_colors", [])
+                    if str(color.get("id", "")).strip()
+                }
+                selected_palette = []
+                for color_id in selected_ids:
+                    target = colors_by_id.get(color_id)
+                    if not target:
+                        self._send_json({"error": "invalid color_id"}, status=400)
+                        return
+                    selected_palette.append(target)
+                if len(selected_palette) == 1:
+                    seed = sum(bytearray((session_id + selected_ids[0]).encode("utf-8")))
+                    image = _isolated_png(width, height, selected_palette[0], seed)
+                else:
+                    image = _banded_png(width, height, selected_palette)
             else:
                 image = _banded_png(width, height, palette)
             self._send_png(image)
