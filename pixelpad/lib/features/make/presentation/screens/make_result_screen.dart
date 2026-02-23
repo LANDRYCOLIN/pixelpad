@@ -115,19 +115,14 @@ class _MakeResultScreenState extends State<MakeResultScreen> {
             const Divider(color: Color(0xFF404040), height: 1),
             Expanded(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(16, 18, 16, 20),
+                padding: const EdgeInsets.fromLTRB(0, 18, 0, 20),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _ResultPreviewCard(
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: AppColors.white,
-                          borderRadius: BorderRadius.circular(24),
-                        ),
-                        alignment: Alignment.center,
-                        child: _loading
-                            ? const CircularProgressIndicator(
+                      child: _loading
+                          ? const Center(
+                              child: CircularProgressIndicator(
                                 color: AppColors.primary,
                               )
                             : _imageBytes != null
@@ -150,48 +145,54 @@ class _MakeResultScreenState extends State<MakeResultScreen> {
                                       color: Color(0xFF9A9A9A),
                                     ),
                                   ),
+                                ),
+                    ),
+                    const SizedBox(height: 4),
+                    Transform.translate(
+                      offset: const Offset(0, -24),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: _ColorsSection(
+                          tokens: widget.detectedColors
+                              .map(
+                                (color) => _ColorToken(
+                                  color.id,
+                                  _colorFromHex(color.hex),
+                                ),
+                              )
+                              .toList(),
+                          selected: _selected,
+                          onToggle: _toggleColor,
+                        ),
                       ),
                     ),
-                    const SizedBox(height: 18),
-                    const Divider(color: Color(0xFF404040), height: 1),
-                    const SizedBox(height: 12),
-                    _ColorsSection(
-                      tokens: widget.detectedColors
-                          .map(
-                            (color) => _ColorToken(
-                              color.id,
-                              _colorFromHex(color.hex),
+                    const SizedBox(height: 8),
+                    const SizedBox(height: 10),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: _ActionButton(
+                              label: '存储到图库',
+                              background: const Color(0xFF2E2E2E),
+                              borderColor: const Color(0xFF6C6C6C),
+                              textColor: AppColors.white,
+                              onTap: () {},
                             ),
-                          )
-                          .toList(),
-                      selected: _selected,
-                      onToggle: _toggleColor,
-                    ),
-                    const SizedBox(height: 16),
-                    const Divider(color: Color(0xFF404040), height: 1),
-                    const SizedBox(height: 14),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _ActionButton(
-                            label: '存储到图库',
-                            background: const Color(0xFF2E2E2E),
-                            borderColor: const Color(0xFF6C6C6C),
-                            textColor: AppColors.white,
-                            onTap: () {},
                           ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _ActionButton(
-                            label: '确认',
-                            background: const Color(0xFF2E2E2E),
-                            borderColor: const Color(0xFF6C6C6C),
-                            textColor: AppColors.white,
-                            onTap: () {},
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _ActionButton(
+                              label: '确认',
+                              background: const Color(0xFF2E2E2E),
+                              borderColor: const Color(0xFF6C6C6C),
+                              textColor: AppColors.white,
+                              onTap: () {},
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ],
                 ),
@@ -271,15 +272,17 @@ class _ResultPreviewCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final double width = MediaQuery.of(context).size.width;
+    final double horizontalPadding = 32;
+    final double height = width - horizontalPadding * 2;
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(32),
       decoration: BoxDecoration(
         color: AppColors.header,
-        borderRadius: BorderRadius.circular(22),
       ),
       child: SizedBox(
-        height: 260,
+        height: height,
         child: child,
       ),
     );
@@ -308,7 +311,7 @@ class _ColorsSection extends StatelessWidget {
           const Text(
             '暂无颜色数据',
             style: TextStyle(
-              fontSize: 12,
+              fontSize: 14,
               fontWeight: FontWeight.w500,
               color: Color(0xFF9A9A9A),
             ),
@@ -343,7 +346,7 @@ class _SectionPill extends StatelessWidget {
       decoration: BoxDecoration(
         color: const Color(0xFF232323),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFF3A3A3A)),
+        border: Border.all(color: AppColors.header, width: 1),
       ),
       child: Text(
         label,
@@ -392,9 +395,10 @@ class _ColorTokenChip extends StatelessWidget {
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: color,
-                border: selected
-                    ? Border.all(color: AppColors.white, width: 3)
-                    : null,
+                border: Border.all(
+                  color: AppColors.white,
+                  width: selected ? 3 : 1,
+                ),
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withValues(alpha: 0.15),
@@ -411,7 +415,7 @@ class _ColorTokenChip extends StatelessWidget {
               decoration: BoxDecoration(
                 color: AppColors.white,
                 shape: BoxShape.circle,
-                border: Border.all(color: const Color(0xFF2B2B2B), width: 1),
+                border: Border.all(color: AppColors.white, width: 1),
               ),
               child: Text(
                 label,
@@ -432,12 +436,19 @@ class _ColorTokenChip extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: const Color(0xFFF6F26B),
                     shape: BoxShape.circle,
-                    border: Border.all(color: const Color(0xFF1A1A1A), width: 2),
+                    border: Border.all(color: AppColors.white, width: 2),
                   ),
-                  child: const Icon(
-                    Icons.check,
-                    size: 14,
-                    color: Color(0xFF1A1A1A),
+                  child: Container(
+                    margin: const EdgeInsets.all(2),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: const Color(0xFF1A1A1A), width: 1),
+                    ),
+                    child: const Icon(
+                      Icons.check,
+                      size: 12,
+                      color: Color(0xFF1A1A1A),
+                    ),
                   ),
                 ),
               ),
