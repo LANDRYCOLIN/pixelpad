@@ -774,45 +774,13 @@ class _ImageEditorScreenState extends State<_ImageEditorScreen> {
         break;
     }
 
-    double size;
-    double newLeft;
-    double newTop;
-
-    switch (handle) {
-      case _CropHandle.topLeft:
-        size = max(right - left, bottom - top);
-        size = size.clamp(minSize, min(right, bottom));
-        newLeft = right - size;
-        newTop = bottom - size;
-        break;
-      case _CropHandle.topRight:
-        size = max(right - left, bottom - top);
-        size = size.clamp(minSize, min(_imageSize.width - left, bottom));
-        newLeft = left;
-        newTop = bottom - size;
-        break;
-      case _CropHandle.bottomLeft:
-        size = max(right - left, bottom - top);
-        size = size.clamp(minSize, min(right, _imageSize.height - top));
-        newLeft = right - size;
-        newTop = top;
-        break;
-      case _CropHandle.bottomRight:
-        size = max(right - left, bottom - top);
-        size = size.clamp(
-          minSize,
-          min(_imageSize.width - left, _imageSize.height - top),
-        );
-        newLeft = left;
-        newTop = top;
-        break;
-    }
-
-    newLeft = newLeft.clamp(0.0, _imageSize.width - size);
-    newTop = newTop.clamp(0.0, _imageSize.height - size);
+    left = left.clamp(0.0, right - minSize);
+    top = top.clamp(0.0, bottom - minSize);
+    right = right.clamp(left + minSize, _imageSize.width);
+    bottom = bottom.clamp(top + minSize, _imageSize.height);
 
     setState(() {
-      _cropRectPx = Rect.fromLTWH(newLeft, newTop, size, size);
+      _cropRectPx = Rect.fromLTRB(left, top, right, bottom);
       _cropDirty = true;
       _hasCropRect = true;
     });
@@ -861,15 +829,16 @@ class _ImageEditorScreenState extends State<_ImageEditorScreen> {
       });
       return;
     }
-    double size = min(dx, dy);
-    size = min(size, _imageSize.width - _drawStartPx!.dx);
-    size = min(size, _imageSize.height - _drawStartPx!.dy);
+    double w = dx;
+    double h = dy;
+    w = min(w, _imageSize.width - _drawStartPx!.dx);
+    h = min(h, _imageSize.height - _drawStartPx!.dy);
     setState(() {
       _cropRectPx = Rect.fromLTWH(
         _drawStartPx!.dx,
         _drawStartPx!.dy,
-        size,
-        size,
+        w,
+        h,
       );
     });
   }
@@ -880,7 +849,7 @@ class _ImageEditorScreenState extends State<_ImageEditorScreen> {
     }
     final double minSize =
         min(_imageSize.width, _imageSize.height) * _minCropSizeFactor;
-    if (_cropRectPx.width < minSize) {
+    if (_cropRectPx.width < minSize || _cropRectPx.height < minSize) {
       setState(() {
         _hasCropRect = false;
         _cropRectPx = const Rect.fromLTWH(0, 0, 1, 1);
@@ -1114,9 +1083,29 @@ class _ImageEditorScreenState extends State<_ImageEditorScreen> {
     if (response.statusCode != 200) {
       throw Exception('Process failed: ${response.statusCode}');
     }
-    final Map<String, dynamic> json =
+
+    final Map<String, dynamic> processJson =
         (jsonDecode(response.body) as Map<String, dynamic>? ?? {});
-    return _ProcessResult.fromJson(json);
+    final String sessionId = processJson['session_id'] as String? ?? '';
+
+    if (sessionId.isNotEmpty) {
+      final http.Response perfectResponse = await http.post(
+        Uri.parse('$makeApiBaseUrl/perfect_pixel'),
+        body: {
+          'session_id': sessionId,
+          'max_colors': preset.count.toString(),
+          'merge_threshold': '12.0',
+        },
+      );
+
+      if (perfectResponse.statusCode == 200) {
+        final Map<String, dynamic> perfectJson =
+            (jsonDecode(perfectResponse.body) as Map<String, dynamic>? ?? {});
+        return _ProcessResult.fromJson(perfectJson);
+      }
+    }
+
+    return _ProcessResult.fromJson(processJson);
   }
 
   Future<void> _handleComplete() async {

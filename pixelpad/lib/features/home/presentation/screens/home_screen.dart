@@ -2,6 +2,8 @@
 import 'package:flutter_svg/flutter_svg.dart';
 
 import 'package:pixelpad/core/theme/app_theme.dart';
+import 'package:pixelpad/features/device/domain/services/bluetooth_service.dart';
+import 'package:pixelpad/features/device/presentation/widgets/bluetooth_connect_dialog.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -269,14 +271,24 @@ class _HeroCard extends StatefulWidget {
   State<_HeroCard> createState() => _HeroCardState();
 }
 
-class _HeroCardState extends State<_HeroCard>
-    with SingleTickerProviderStateMixin {
+class _HeroCardState extends State<_HeroCard> {
+  final BluetoothTransferService _btService = BluetoothTransferService();
   bool _isCollapsed = false;
 
   void _toggleCollapsed() {
     setState(() {
       _isCollapsed = !_isCollapsed;
     });
+  }
+
+  Future<void> _onCardTap() async {
+    if (_btService.isConnected) {
+      // 已连接，点击切换折叠
+      _toggleCollapsed();
+      return;
+    }
+    // 未连接，弹出蓝牙扫描对话框
+    await BluetoothConnectDialog.show(context);
   }
 
   @override
@@ -286,104 +298,114 @@ class _HeroCardState extends State<_HeroCard>
         ? cardRadius
         : const BorderRadius.vertical(bottom: Radius.circular(16));
 
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFFE6E6E6),
-        borderRadius: cardRadius,
-      ),
-      child: AnimatedSize(
-        duration: const Duration(milliseconds: 260),
-        curve: Curves.easeOutCubic,
-        alignment: Alignment.topCenter,
-        child: Column(
-          children: [
-            ClipRRect(
-              borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(16)),
-              child: ClipRect(
-                child: TweenAnimationBuilder<double>(
-                  duration: const Duration(milliseconds: 260),
-                  curve: Curves.easeOutCubic,
-                  tween: Tween<double>(
-                    begin: 1,
-                    end: _isCollapsed ? 0 : 1,
-                  ),
-                  builder: (context, value, child) {
-                    return Align(
-                      alignment: Alignment.topCenter,
-                      heightFactor: value,
-                      child: child,
-                    );
-                  },
-                  child: AspectRatio(
-                    aspectRatio: 16 / 10,
-                    child: Image.asset(
-                      'assets/source/home-example.png',
-                      fit: BoxFit.cover,
+    return GestureDetector(
+      onTap: _onCardTap,
+      child: Container(
+        decoration: BoxDecoration(
+          color: const Color(0xFFE6E6E6),
+          borderRadius: cardRadius,
+        ),
+        child: AnimatedSize(
+          duration: const Duration(milliseconds: 260),
+          curve: Curves.easeOutCubic,
+          alignment: Alignment.topCenter,
+          child: Column(
+            children: [
+              ClipRRect(
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(16)),
+                child: ClipRect(
+                  child: TweenAnimationBuilder<double>(
+                    duration: const Duration(milliseconds: 260),
+                    curve: Curves.easeOutCubic,
+                    tween: Tween<double>(
+                      begin: 1,
+                      end: _isCollapsed ? 0 : 1,
+                    ),
+                    builder: (context, value, child) {
+                      return Align(
+                        alignment: Alignment.topCenter,
+                        heightFactor: value,
+                        child: child,
+                      );
+                    },
+                    child: AspectRatio(
+                      aspectRatio: 16 / 10,
+                      child: Image.asset(
+                        'assets/source/home-example.png',
+                        fit: BoxFit.cover,
+                      ),
                     ),
                   ),
                 ),
               ),
-            ),
-            ClipRRect(
-              borderRadius: barRadius,
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: _toggleCollapsed,
+              ClipRRect(
+                borderRadius: barRadius,
                 child: Container(
                   width: double.infinity,
                   color: const Color(0xFF3A3A3A),
                   padding:
                       const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 6,
-                        height: 6,
-                        decoration: const BoxDecoration(
-                          color: AppColors.white,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      const Text(
-                        '待机中',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                          color: AppColors.white,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      SvgPicture.asset(
-                        'assets/source/icon_battery.svg',
-                        width: 18,
-                        height: 10,
-                      ),
-                      const SizedBox(width: 6),
-                      const Text(
-                        '93%',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                          color: AppColors.white,
-                        ),
-                      ),
-                      const Spacer(),
-                      const Text(
-                        'MyPixel',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w300,
-                          color: AppColors.white,
-                        ),
-                      ),
-                    ],
+                  child: ValueListenableBuilder<bool>(
+                    valueListenable: _btService.connectionNotifier,
+                    builder: (context, connected, _) {
+                      return Row(
+                        children: [
+                          Container(
+                            width: 6,
+                            height: 6,
+                            decoration: BoxDecoration(
+                              color: connected
+                                  ? const Color(0xFF4CAF50)
+                                  : AppColors.white,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            connected ? '已连接' : '未连接，点击连接',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                              color: connected
+                                  ? const Color(0xFF4CAF50)
+                                  : AppColors.white,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          SvgPicture.asset(
+                            'assets/source/icon_battery.svg',
+                            width: 18,
+                            height: 10,
+                          ),
+                          const SizedBox(width: 6),
+                          const Text(
+                            '93%',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                              color: AppColors.white,
+                            ),
+                          ),
+                          const Spacer(),
+                          Text(
+                            connected
+                                ? _btService.deviceName
+                                : 'MyPixel',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w300,
+                              color: AppColors.white,
+                            ),
+                          ),
+                        ],
+                      );
+                    },
                   ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
