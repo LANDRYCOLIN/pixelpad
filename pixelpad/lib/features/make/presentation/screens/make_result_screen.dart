@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 
 import 'package:pixelpad/core/theme/app_theme.dart';
 import 'package:pixelpad/features/make/data/make_api.dart';
+import 'package:pixelpad/features/device/domain/services/bluetooth_service.dart';
 
 class DetectedColor {
   final String id;
@@ -44,6 +45,8 @@ class _MakeResultScreenState extends State<MakeResultScreen> {
   bool _loading = false;
   String? _error;
   final Set<String> _selected = <String>{};
+  final BluetoothTransferService _btService = BluetoothTransferService();
+  bool _btUploading = false;
 
   @override
   void initState() {
@@ -58,9 +61,7 @@ class _MakeResultScreenState extends State<MakeResultScreen> {
     });
     try {
       final Uri url = Uri.parse('$makeApiBaseUrl/render');
-      final Map<String, String> body = {
-        'session_id': widget.sessionId,
-      };
+      final Map<String, String> body = {'session_id': widget.sessionId};
       if (colorId != null && colorId.isNotEmpty) {
         body['color_id'] = colorId;
       }
@@ -72,6 +73,8 @@ class _MakeResultScreenState extends State<MakeResultScreen> {
       setState(() {
         _imageBytes = response.bodyBytes;
       });
+      // 蓝牙已连接时自动上传 /render 结果到设备
+      _autoUploadToDevice(response.bodyBytes);
     } catch (err) {
       if (!mounted) return;
       setState(() {
@@ -81,6 +84,40 @@ class _MakeResultScreenState extends State<MakeResultScreen> {
       if (mounted) {
         setState(() {
           _loading = false;
+        });
+      }
+    }
+  }
+
+  /// 蓝牙已连接时，静默将图片上传到设备。失败仅 SnackBar 提示，不阻断操作。
+  Future<void> _autoUploadToDevice(Uint8List imageBytes) async {
+    if (!_btService.isConnected || _btUploading) return;
+    setState(() {
+      _btUploading = true;
+    });
+    try {
+      await _btService.uploadImage(imageBytes, (_) {});
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('已同步到设备'),
+            duration: Duration(seconds: 1),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('同步失败: $e'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _btUploading = false;
         });
       }
     }
@@ -127,27 +164,27 @@ class _MakeResultScreenState extends State<MakeResultScreen> {
                               ),
                             )
                           : _imageBytes != null
-                              ? ClipRRect(
-                                  borderRadius: BorderRadius.circular(18),
-                                  child: SizedBox.expand(
-                                    child: Image.memory(
-                                      _imageBytes!,
-                                      fit: BoxFit.contain,
-                                      filterQuality: FilterQuality.none,
-                                      isAntiAlias: false,
-                                    ),
-                                  ),
-                                )
-                              : Center(
-                                  child: Text(
-                                    _error ?? '暂无预览',
-                                    style: const TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w600,
-                                      color: Color(0xFF9A9A9A),
-                                    ),
-                                  ),
+                          ? ClipRRect(
+                              borderRadius: BorderRadius.circular(18),
+                              child: SizedBox.expand(
+                                child: Image.memory(
+                                  _imageBytes!,
+                                  fit: BoxFit.contain,
+                                  filterQuality: FilterQuality.none,
+                                  isAntiAlias: false,
                                 ),
+                              ),
+                            )
+                          : Center(
+                              child: Text(
+                                _error ?? '暂无预览',
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: Color(0xFF9A9A9A),
+                                ),
+                              ),
+                            ),
                     ),
                     const SizedBox(height: 4),
                     Transform.translate(
@@ -190,7 +227,7 @@ class _MakeResultScreenState extends State<MakeResultScreen> {
                               background: const Color(0xFF2E2E2E),
                               borderColor: const Color(0xFF6C6C6C),
                               textColor: AppColors.white,
-                              onTap: () {},
+                              onTap: () => Navigator.of(context).pop(),
                             ),
                           ),
                         ],
@@ -280,13 +317,8 @@ class _ResultPreviewCard extends StatelessWidget {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(32),
-      decoration: BoxDecoration(
-        color: AppColors.header,
-      ),
-      child: SizedBox(
-        height: height,
-        child: child,
-      ),
+      decoration: BoxDecoration(color: AppColors.header),
+      child: SizedBox(height: height, child: child),
     );
   }
 }
@@ -323,12 +355,14 @@ class _ColorsSection extends StatelessWidget {
             spacing: 10,
             runSpacing: 10,
             children: tokens
-                .map((token) => _ColorTokenChip(
-                      label: token.label,
-                      color: token.color,
-                      selected: selected.contains(token.label),
-                      onTap: () => onToggle(token.label),
-                    ))
+                .map(
+                  (token) => _ColorTokenChip(
+                    label: token.label,
+                    color: token.color,
+                    selected: selected.contains(token.label),
+                    onTap: () => onToggle(token.label),
+                  ),
+                )
                 .toList(),
           ),
       ],
@@ -444,7 +478,10 @@ class _ColorTokenChip extends StatelessWidget {
                     margin: const EdgeInsets.all(2),
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      border: Border.all(color: const Color(0xFF1A1A1A), width: 1),
+                      border: Border.all(
+                        color: const Color(0xFF1A1A1A),
+                        width: 1,
+                      ),
                     ),
                     child: const Icon(
                       Icons.check,
@@ -509,4 +546,143 @@ Color _colorFromHex(String hex) {
   }
   final int value = int.parse(normalized, radix: 16);
   return Color(0xFF000000 | value);
+}
+
+/// 蓝牙传输进度对话框。
+///
+/// 直接使用已连接的设备传输数据，显示进度条和状态信息。
+class _BluetoothUploadProgressDialog extends StatefulWidget {
+  final Uint8List imageBytes;
+  final BluetoothTransferService btService;
+
+  const _BluetoothUploadProgressDialog({
+    required this.imageBytes,
+    required this.btService,
+  });
+
+  @override
+  State<_BluetoothUploadProgressDialog> createState() =>
+      _BluetoothUploadProgressDialogState();
+}
+
+class _BluetoothUploadProgressDialogState
+    extends State<_BluetoothUploadProgressDialog> {
+  double _progress = 0.0;
+  String _status = '准备传输...';
+  bool _done = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _startUpload();
+  }
+
+  Future<void> _startUpload() async {
+    try {
+      setState(() {
+        _status = '正在传输数据到 ${widget.btService.deviceName}...';
+      });
+      await widget.btService.uploadImage(widget.imageBytes, (progress) {
+        if (mounted) {
+          setState(() {
+            _progress = progress;
+            if (progress >= 1.0) {
+              _status = '传输完成！';
+              _done = true;
+            }
+          });
+        }
+      });
+      if (mounted && !_done) {
+        setState(() {
+          _status = '传输完成！';
+          _done = true;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = '传输失败: $e';
+          _status = '传输失败';
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: const Color(0xFF1F1F1F),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              '传输到设备',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFFF9F871),
+              ),
+            ),
+            const SizedBox(height: 16),
+            if (_error != null)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                margin: const EdgeInsets.only(bottom: 12),
+                decoration: BoxDecoration(
+                  color: Colors.red.withValues(alpha: 0.1),
+                  border: Border.all(color: Colors.red),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  _error!,
+                  style: const TextStyle(color: Colors.red, fontSize: 13),
+                ),
+              ),
+            Text(
+              _status,
+              style: const TextStyle(fontSize: 14, color: Colors.white),
+            ),
+            const SizedBox(height: 16),
+            LinearProgressIndicator(
+              value: _progress,
+              backgroundColor: const Color(0xFF2E2E2E),
+              color: const Color(0xFFF9F871),
+              minHeight: 8,
+              borderRadius: BorderRadius.circular(4),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '${(_progress * 100).toStringAsFixed(0)}%',
+              style: const TextStyle(color: Colors.white),
+            ),
+            const SizedBox(height: 16),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  if (_done && context.mounted) {
+                    ScaffoldMessenger.of(
+                      context,
+                    ).showSnackBar(const SnackBar(content: Text('已成功发送到设备！')));
+                  }
+                },
+                child: Text(
+                  _done || _error != null ? '关闭' : '取消',
+                  style: const TextStyle(color: Color(0xFFF9F871)),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }

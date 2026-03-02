@@ -3,44 +3,58 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import 'package:pixelpad/core/theme/app_theme.dart';
 import 'package:pixelpad/features/device/domain/entities/device_data.dart';
+import 'package:pixelpad/features/device/domain/services/bluetooth_service.dart';
+import 'package:pixelpad/features/device/presentation/widgets/bluetooth_connect_dialog.dart';
 
 class DeviceScreen extends StatelessWidget {
   const DeviceScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final BluetoothTransferService btService = BluetoothTransferService();
     // TODO: replace sample data with repository/provider-driven user data.
     final DeviceData data = DeviceData.sample();
 
     return SafeArea(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const _DeviceHeader(),
-            const SizedBox(height: 16),
-            _DeviceFilterRow(status: data.status),
-            const SizedBox(height: 14),
-            _BatteryRow(
-              percent: data.batteryPercent,
-              idleState: data.idleState,
+      child: ValueListenableBuilder<bool>(
+        valueListenable: btService.connectionNotifier,
+        builder: (context, connected, _) {
+          return SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const _DeviceHeader(),
+                const SizedBox(height: 16),
+                _DeviceFilterRow(
+                  status: connected ? '已连接' : '未连接',
+                  btService: btService,
+                ),
+                const SizedBox(height: 14),
+                _BatteryRow(
+                  percent: data.batteryPercent,
+                  idleState: connected ? '待机中' : '离线',
+                ),
+                const SizedBox(height: 10),
+                _DeviceNameRow(
+                  name: connected ? btService.deviceName : 'MyPixel',
+                ),
+                const SizedBox(height: 14),
+                _ParameterCard(metrics: data.metrics),
+                const SizedBox(height: 18),
+                const _SectionTitle(title: '使用记录'),
+                const SizedBox(height: 10),
+                Divider(
+                    color: AppColors.white.withValues(alpha: 0.7), height: 1),
+                const SizedBox(height: 12),
+                ...data.records.map((record) => Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: _UsageRecordCard(record: record),
+                    )),
+              ],
             ),
-            const SizedBox(height: 10),
-            _DeviceNameRow(name: data.name),
-            const SizedBox(height: 14),
-            _ParameterCard(metrics: data.metrics),
-            const SizedBox(height: 18),
-            const _SectionTitle(title: '使用记录'),
-            const SizedBox(height: 10),
-            Divider(color: AppColors.white.withValues(alpha: 0.7), height: 1),
-            const SizedBox(height: 12),
-            ...data.records.map((record) => Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: _UsageRecordCard(record: record),
-                )),
-          ],
-        ),
+          );
+        },
       ),
     );
   }
@@ -95,8 +109,12 @@ class _HeaderIcon extends StatelessWidget {
 
 class _DeviceFilterRow extends StatelessWidget {
   final String status;
+  final BluetoothTransferService btService;
 
-  const _DeviceFilterRow({required this.status});
+  const _DeviceFilterRow({
+    required this.status,
+    required this.btService,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -107,14 +125,16 @@ class _DeviceFilterRow extends StatelessWidget {
             label: status,
             background: const Color(0xFFF9F871),
             textColor: const Color(0xFF232323),
+            onTap: () {}, // 可选：点击状态显示详细连接信息
           ),
         ),
         const SizedBox(width: 12),
-        const Expanded(
+        Expanded(
           child: _FilterChip(
             label: '更换设备',
             background: AppColors.white,
             textColor: AppColors.primary,
+            onTap: () => BluetoothConnectDialog.show(context),
           ),
         ),
       ],
@@ -126,29 +146,35 @@ class _FilterChip extends StatelessWidget {
   final String label;
   final Color background;
   final Color textColor;
+  final VoidCallback onTap;
 
   const _FilterChip({
     required this.label,
     required this.background,
     required this.textColor,
+    required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      decoration: BoxDecoration(
-        color: background,
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: Text(
-        label,
-        textAlign: TextAlign.center,
-        style: TextStyle(
-          fontSize: 17,
-          fontWeight: FontWeight.w600,
-          color: textColor,
-          letterSpacing: -0.1,
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(18),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        decoration: BoxDecoration(
+          color: background,
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: Text(
+          label,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 17,
+            fontWeight: FontWeight.w600,
+            color: textColor,
+            letterSpacing: -0.1,
+          ),
         ),
       ),
     );
