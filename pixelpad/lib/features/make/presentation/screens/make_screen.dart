@@ -1078,8 +1078,11 @@ class _ImageEditorScreenState extends State<_ImageEditorScreen> {
       http.MultipartFile.fromBytes('file', bytes, filename: 'upload.png'),
     );
 
-    final http.StreamedResponse streamed = await request.send();
-    final http.Response response = await http.Response.fromStream(streamed);
+    final http.StreamedResponse streamed = await request
+        .send()
+        .timeout(const Duration(seconds: 20));
+    final http.Response response = await http.Response.fromStream(streamed)
+        .timeout(const Duration(seconds: 20));
     if (response.statusCode != 200) {
       throw Exception('Process failed: ${response.statusCode}');
     }
@@ -1089,14 +1092,16 @@ class _ImageEditorScreenState extends State<_ImageEditorScreen> {
     final String sessionId = processJson['session_id'] as String? ?? '';
 
     if (sessionId.isNotEmpty) {
-      final http.Response perfectResponse = await http.post(
-        Uri.parse('$makeApiBaseUrl/perfect_pixel'),
-        body: {
-          'session_id': sessionId,
-          'max_colors': preset.count.toString(),
-          'merge_threshold': '12.0',
-        },
-      );
+      final http.Response perfectResponse = await http
+          .post(
+            Uri.parse('$makeApiBaseUrl/perfect_pixel'),
+            body: {
+              'session_id': sessionId,
+              'max_colors': preset.count.toString(),
+              'merge_threshold': '12.0',
+            },
+          )
+          .timeout(const Duration(seconds: 20));
 
       if (perfectResponse.statusCode == 200) {
         final Map<String, dynamic> perfectJson =

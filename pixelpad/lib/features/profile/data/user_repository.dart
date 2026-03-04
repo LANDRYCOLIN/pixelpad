@@ -52,7 +52,7 @@ abstract class UserDataSource {
 class BackendUserDataSource implements UserDataSource {
   BackendUserDataSource({
     http.Client? client,
-    this.baseUrl = 'http://192.168.1.143:8080',
+    this.baseUrl = 'http://10.0.2.2:8080',
   }) : _client = client ?? http.Client();
 
   final http.Client _client;
@@ -63,6 +63,19 @@ class BackendUserDataSource implements UserDataSource {
     required String accessToken,
     required String tokenType,
   }) async {
+    if (_isMockSession(accessToken, tokenType)) {
+      final response = await _client.get(
+        Uri.parse('$baseUrl/users/$accessToken'),
+      );
+      if (response.statusCode != 200) {
+        throw _toApiException(
+          response,
+          defaultMessage: 'Failed to load current user',
+        );
+      }
+      final data = _decodeJsonMap(response.body);
+      return UserProfile.fromMap(data);
+    }
     final response = await _client.get(
       Uri.parse('$baseUrl/users/me'),
       headers: _authHeaders(accessToken: accessToken, tokenType: tokenType),
@@ -95,15 +108,24 @@ class BackendUserDataSource implements UserDataSource {
       payload['password'] = data.password;
     }
 
-    final response = await _client.put(
-      Uri.parse('$baseUrl/users/me'),
-      headers: _authHeaders(
-        accessToken: accessToken,
-        tokenType: tokenType,
-        withJsonContentType: true,
-      ),
-      body: jsonEncode(payload),
-    );
+    final http.Response response;
+    if (_isMockSession(accessToken, tokenType)) {
+      response = await _client.put(
+        Uri.parse('$baseUrl/users/$accessToken'),
+        headers: _jsonHeaders(),
+        body: jsonEncode(payload),
+      );
+    } else {
+      response = await _client.put(
+        Uri.parse('$baseUrl/users/me'),
+        headers: _authHeaders(
+          accessToken: accessToken,
+          tokenType: tokenType,
+          withJsonContentType: true,
+        ),
+        body: jsonEncode(payload),
+      );
+    }
     if (response.statusCode != 200) {
       throw _toApiException(
         response,
@@ -119,15 +141,29 @@ class BackendUserDataSource implements UserDataSource {
     required String phone,
     required String password,
   }) async {
-    final response = await _client.post(
+    final http.Response response = await _client.post(
       Uri.parse('$baseUrl/auth/login'),
       headers: _jsonHeaders(),
       body: jsonEncode(<String, String>{'phone': phone, 'password': password}),
     );
-    if (response.statusCode != 200) {
-      throw _toApiException(response, defaultMessage: 'Failed to login user');
+    if (response.statusCode == 200) {
+      return _parseAuthSession(response.body);
     }
-    return _parseAuthSession(response.body);
+    if (response.statusCode == 404 || response.statusCode == 405) {
+      final http.Response fallback = await _client.post(
+        Uri.parse('$baseUrl/login'),
+        headers: _jsonHeaders(),
+        body: jsonEncode(<String, String>{'phone': phone, 'password': password}),
+      );
+      if (fallback.statusCode != 200) {
+        throw _toApiException(
+          fallback,
+          defaultMessage: 'Failed to login user',
+        );
+      }
+      return _parseAuthSession(fallback.body);
+    }
+    throw _toApiException(response, defaultMessage: 'Failed to login user');
   }
 
   @override
@@ -135,18 +171,29 @@ class BackendUserDataSource implements UserDataSource {
     required String phone,
     required String password,
   }) async {
-    final response = await _client.post(
+    final http.Response response = await _client.post(
       Uri.parse('$baseUrl/auth/register'),
       headers: _jsonHeaders(),
       body: jsonEncode(<String, String>{'phone': phone, 'password': password}),
     );
-    if (response.statusCode != 201) {
-      throw _toApiException(
-        response,
-        defaultMessage: 'Failed to register user',
-      );
+    if (response.statusCode == 201 || response.statusCode == 200) {
+      return _parseAuthSession(response.body);
     }
-    return _parseAuthSession(response.body);
+    if (response.statusCode == 404 || response.statusCode == 405) {
+      final http.Response fallback = await _client.post(
+        Uri.parse('$baseUrl/register'),
+        headers: _jsonHeaders(),
+        body: jsonEncode(<String, String>{'phone': phone, 'password': password}),
+      );
+      if (fallback.statusCode != 201 && fallback.statusCode != 200) {
+        throw _toApiException(
+          fallback,
+          defaultMessage: 'Failed to register user',
+        );
+      }
+      return _parseAuthSession(fallback.body);
+    }
+    throw _toApiException(response, defaultMessage: 'Failed to register user');
   }
 
   Map<String, String> _jsonHeaders() => <String, String>{
@@ -170,6 +217,26 @@ class BackendUserDataSource implements UserDataSource {
 
   AuthSession _parseAuthSession(String rawBody) {
     final Map<String, dynamic> data = _decodeJsonMap(rawBody);
+    if (data.containsKey('access_token') || data.containsKey('token_type')) {
+      final Map<String, dynamic> userMap = data['user'] is Map<String, dynamic>
+          ? data['user'] as Map<String, dynamic>
+          : <String, dynamic>{};
+      return AuthSession(
+        accessToken: data['access_token'] as String? ?? '',
+        tokenType: data['token_type'] as String? ?? 'Bearer',
+        expiresIn: (data['expires_in'] as num?)?.toInt(),
+        user: UserProfile.fromMap(userMap),
+      );
+    }
+    if (data.isNotEmpty) {
+      final UserProfile user = UserProfile.fromMap(data);
+      return AuthSession(
+        accessToken: user.id.toString(),
+        tokenType: 'Mock',
+        expiresIn: null,
+        user: user,
+      );
+    }
     final Map<String, dynamic> userMap = data['user'] is Map<String, dynamic>
         ? data['user'] as Map<String, dynamic>
         : <String, dynamic>{};
@@ -186,8 +253,16 @@ class BackendUserDataSource implements UserDataSource {
     required String defaultMessage,
   }) {
     final Map<String, dynamic> map = _decodeJsonMap(response.body);
-    final String detail = map['detail'] as String? ?? defaultMessage;
+    final String detail =
+        map['detail'] as String? ??
+        map['error'] as String? ??
+        map['message'] as String? ??
+        defaultMessage;
     return ApiException(statusCode: response.statusCode, message: detail);
+  }
+
+  bool _isMockSession(String accessToken, String tokenType) {
+    return tokenType == 'Mock' && accessToken.isNotEmpty;
   }
 
   Map<String, dynamic> _decodeJsonMap(String body) {

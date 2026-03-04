@@ -29,7 +29,7 @@ final List<MainShellTab> mainShellTabs = [
     builder: (_) => const MakeScreen(),
   ),
   MainShellTab(
-    label: '设备管理',
+    label: '像素管理',
     iconAsset: 'assets/tabbar/device.png',
     builder: (_) => const DeviceScreen(),
   ),
