@@ -1,4 +1,5 @@
 ﻿import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'package:pixelpad/core/theme/app_theme.dart';
 import 'package:pixelpad/features/device/data/warehouse_chat_storage.dart';
@@ -781,7 +782,10 @@ class _CircleWheelSelector extends StatelessWidget {
           itemExtent: 26,
           physics: const FixedExtentScrollPhysics(),
           controller: FixedExtentScrollController(initialItem: initialIndex),
-          onSelectedItemChanged: (index) => onSelect(items[index]),
+          onSelectedItemChanged: (index) {
+            HapticFeedback.selectionClick();
+            onSelect(items[index]);
+          },
           childDelegate: ListWheelChildBuilderDelegate(
             childCount: items.length,
             builder: (context, index) {
@@ -998,3 +1002,5 @@ String _formatTime(DateTime value) {
   final String period = time.period == DayPeriod.am ? 'AM' : 'PM';
   return '${hour.toString().padLeft(2, '0')}:$minute $period';
 }
+
+
