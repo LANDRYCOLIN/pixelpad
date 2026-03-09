@@ -1,18 +1,27 @@
-﻿import 'package:flutter/material.dart';
+import 'dart:async';
+
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'package:pixelpad/core/app/app_scope.dart';
 import 'package:pixelpad/core/theme/app_theme.dart';
+import 'package:pixelpad/features/device/data/inventory_api_service.dart';
 import 'package:pixelpad/features/device/data/warehouse_chat_storage.dart';
 
 class WarehouseChatScreen extends StatefulWidget {
   final List<String> missingColors;
+  final int? brandId;
   final WarehouseChatRepository repository;
+  final InventoryApiService inventoryApiService;
 
-  const WarehouseChatScreen({
+  WarehouseChatScreen({
     super.key,
     required this.missingColors,
+    this.brandId,
     WarehouseChatRepository? repository,
-  }) : repository = repository ?? const LocalWarehouseChatRepository();
+    InventoryApiService? inventoryApiService,
+  }) : repository = repository ?? const LocalWarehouseChatRepository(),
+       inventoryApiService = inventoryApiService ?? InventoryApiService();
 
   @override
   State<WarehouseChatScreen> createState() => _WarehouseChatScreenState();
@@ -23,12 +32,15 @@ class _WarehouseChatScreenState extends State<WarehouseChatScreen> {
   final ScrollController _scrollController = ScrollController();
 
   _ComposerMode _mode = _ComposerMode.none;
+  bool _didLoadInventory = false;
   String _selectedLetter = 'A';
   int _selectedNumber = 1;
   int _selectedAmount = 10200;
   String? _manualCode;
-  // TODO: replace fixed stats with repository-driven data.
-  final _WarehouseStats _stats = const _WarehouseStats(
+  String? _accessToken;
+  int? _brandId;
+  bool _syncFallbackNotified = false;
+  _WarehouseStats _stats = const _WarehouseStats(
     favoriteBeans: [
       _BeanRing(label: 'H2', ringColor: Color(0xFFF5F871)),
       _BeanRing(label: 'F7', ringColor: Color(0xFF1E1E1E)),
@@ -47,6 +59,16 @@ class _WarehouseChatScreenState extends State<WarehouseChatScreen> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_didLoadInventory) {
+      return;
+    }
+    _didLoadInventory = true;
+    unawaited(_loadInventoryContext());
+  }
+
+  @override
   void dispose() {
     _scrollController.dispose();
     super.dispose();
@@ -55,11 +77,7 @@ class _WarehouseChatScreenState extends State<WarehouseChatScreen> {
   void _appendMessage(String text, {required bool isUser}) {
     setState(() {
       _messages.add(
-        _ChatMessage(
-          text: text,
-          isUser: isUser,
-          timestamp: DateTime.now(),
-        ),
+        _ChatMessage(text: text, isUser: isUser, timestamp: DateTime.now()),
       );
     });
     _scrollToBottom();
@@ -80,8 +98,7 @@ class _WarehouseChatScreenState extends State<WarehouseChatScreen> {
   }
 
   Future<void> _loadMessages() async {
-    final List<WarehouseChatRecord> stored =
-        await widget.repository.load();
+    final List<WarehouseChatRecord> stored = await widget.repository.load();
     if (!mounted) {
       return;
     }
@@ -110,11 +127,7 @@ class _WarehouseChatScreenState extends State<WarehouseChatScreen> {
         : '部分色号';
     final DateTime now = DateTime.now();
     return [
-      _ChatMessage(
-        text: '今天有完成拼豆小目标吗？',
-        isUser: false,
-        timestamp: now,
-      ),
+      _ChatMessage(text: '今天有完成拼豆小目标吗？', isUser: false, timestamp: now),
       _ChatMessage(
         text: '这几天我看你$colorText的豆子数量要少了，记得及时补货哦！',
         isUser: false,
@@ -124,9 +137,124 @@ class _WarehouseChatScreenState extends State<WarehouseChatScreen> {
   }
 
   Future<void> _saveMessages() async {
-    final List<WarehouseChatRecord> records =
-        _messages.map((msg) => msg.toRecord()).toList();
+    final List<WarehouseChatRecord> records = _messages
+        .map((msg) => msg.toRecord())
+        .toList();
     await widget.repository.save(records);
+  }
+
+  Future<void> _loadInventoryContext() async {
+    final String? token = await AppScope.of(
+      context,
+    ).userRepository.getAccessToken();
+    if (token == null || token.isEmpty) {
+      return;
+    }
+    try {
+      final List<InventoryBrand> brands = await widget.inventoryApiService
+          .listBrands(accessToken: token);
+      int? targetBrandId = widget.brandId;
+      if (targetBrandId == null && brands.isNotEmpty) {
+        targetBrandId = brands.first.brandId;
+      }
+      if (targetBrandId == null) {
+        return;
+      }
+      _accessToken = token;
+      _brandId = targetBrandId;
+      await _reloadStats();
+    } catch (error) {
+      _notifySyncFallback(_formatStatsSyncError(error));
+    }
+  }
+
+  Future<void> _reloadStats() async {
+    final String? token = _accessToken;
+    final int? brandId = _brandId;
+    if (token == null || token.isEmpty || brandId == null) {
+      return;
+    }
+    try {
+      final List<InventoryBead> beads = await widget.inventoryApiService
+          .listBeads(brandId: brandId, accessToken: token);
+      if (!mounted || beads.isEmpty) {
+        return;
+      }
+      final List<InventoryBead> desc = List<InventoryBead>.from(beads)
+        ..sort((InventoryBead a, InventoryBead b) {
+          final int diff = b.currentStock.compareTo(a.currentStock);
+          if (diff != 0) {
+            return diff;
+          }
+          return a.beadId.compareTo(b.beadId);
+        });
+      final List<InventoryBead> asc = List<InventoryBead>.from(beads)
+        ..sort((InventoryBead a, InventoryBead b) {
+          final int diff = a.currentStock.compareTo(b.currentStock);
+          if (diff != 0) {
+            return diff;
+          }
+          return a.beadId.compareTo(b.beadId);
+        });
+      final List<_BeanRing> favoriteBeans = desc
+          .take(5)
+          .map(
+            (InventoryBead bead) => _BeanRing(
+              label: bead.beadId,
+              ringColor: _parseInventoryColor(bead.color),
+            ),
+          )
+          .toList();
+      setState(() {
+        _stats = _WarehouseStats(
+          favoriteBeans: favoriteBeans,
+          minBeans: asc.first.currentStock,
+          maxBeans: desc.first.currentStock,
+        );
+        _syncFallbackNotified = false;
+      });
+    } catch (error) {
+      _notifySyncFallback(_formatStatsSyncError(error));
+    }
+  }
+
+  void _notifySyncFallback(String message) {
+    if (!mounted || _syncFallbackNotified) {
+      return;
+    }
+    _syncFallbackNotified = true;
+    _appendMessage(message, isUser: false);
+  }
+
+  String _formatStatsSyncError(Object error) {
+    if (error is InventoryApiException) {
+      if (error.statusCode == 401 || error.statusCode == 403) {
+        return '登录状态已失效，库存统计未同步。';
+      }
+      if (error.statusCode == 429) {
+        return '请求过于频繁，库存统计稍后自动重试。';
+      }
+      if (error.statusCode >= 500) {
+        return '服务器繁忙，库存统计暂不可用。';
+      }
+      final String detail = error.message.trim();
+      if (detail.isNotEmpty) {
+        return '库存统计同步失败：$detail';
+      }
+    }
+
+    if (error is TimeoutException) {
+      return '库存统计同步超时，请稍后重试。';
+    }
+
+    final String raw = error.toString().toLowerCase();
+    if (raw.contains('socketexception') ||
+        raw.contains('clientexception') ||
+        raw.contains('failed host lookup')) {
+      return '网络连接异常，库存统计未同步。';
+    }
+
+    return '库存同步暂不可用，先展示本地统计。';
   }
 
   String _currentCode() {
@@ -137,20 +265,108 @@ class _WarehouseChatScreenState extends State<WarehouseChatScreen> {
   }
 
   Future<void> _sendActionMessage() async {
+    if (_mode == _ComposerMode.none ||
+        _mode == _ComposerMode.menu ||
+        _mode == _ComposerMode.stats) {
+      _appendMessage('请先选择“入库”或“出库”再发送。', isUser: false);
+      return;
+    }
     final String code = _currentCode();
     final int amount = _selectedAmount;
     if (amount <= 0) {
+      _appendMessage('请输入大于 0 的数量后再发送。', isUser: false);
       return;
     }
     if (_mode == _ComposerMode.deposit) {
+      final String? token = _accessToken;
+      if (token == null || token.isEmpty) {
+        _appendMessage('当前未登录，暂时无法同步库存。', isUser: false);
+        return;
+      }
       _appendMessage('我买了$code的豆子$amount粒。', isUser: true);
-      await Future.delayed(const Duration(milliseconds: 350));
-      _appendMessage('好的，已经记录$code+$amount', isUser: false);
+      try {
+        await widget.inventoryApiService.createTransaction(
+          accessToken: token,
+          beadId: code,
+          quantity: amount,
+          action: InventoryTransactionAction.deposit,
+        );
+        _appendMessage('好的，已经记录$code+$amount', isUser: false);
+        await _reloadStats();
+      } on InventoryApiException catch (err) {
+        _appendMessage(
+          _formatActionError(error: err, isDeposit: true),
+          isUser: false,
+        );
+      } catch (error) {
+        _appendMessage(
+          _formatActionError(error: error, isDeposit: true),
+          isUser: false,
+        );
+      }
     } else if (_mode == _ComposerMode.withdraw) {
+      final String? token = _accessToken;
+      if (token == null || token.isEmpty) {
+        _appendMessage('当前未登录，暂时无法同步库存。', isUser: false);
+        return;
+      }
       _appendMessage('取出$code的豆子$amount粒', isUser: true);
-      await Future.delayed(const Duration(milliseconds: 350));
-      _appendMessage('好的，已经记录$code-$amount', isUser: false);
+      try {
+        await widget.inventoryApiService.createTransaction(
+          accessToken: token,
+          beadId: code,
+          quantity: amount,
+          action: InventoryTransactionAction.withdraw,
+        );
+        _appendMessage('好的，已经记录$code-$amount', isUser: false);
+        await _reloadStats();
+      } on InventoryApiException catch (err) {
+        _appendMessage(
+          _formatActionError(error: err, isDeposit: false),
+          isUser: false,
+        );
+      } catch (error) {
+        _appendMessage(
+          _formatActionError(error: error, isDeposit: false),
+          isUser: false,
+        );
+      }
     }
+  }
+
+  String _formatActionError({
+    required Object error,
+    required bool isDeposit,
+  }) {
+    final String actionLabel = isDeposit ? '入库' : '出库';
+    if (error is InventoryApiException) {
+      if (error.statusCode == 401 || error.statusCode == 403) {
+        return '记录$actionLabel失败：登录状态已失效，请重新登录。';
+      }
+      if (error.statusCode == 429) {
+        return '记录$actionLabel失败：请求过于频繁，请稍后再试。';
+      }
+      if (error.statusCode >= 500) {
+        return '记录$actionLabel失败：服务器繁忙，请稍后再试。';
+      }
+      final String detail = error.message.trim();
+      if (detail.isNotEmpty) {
+        return '记录$actionLabel失败：$detail';
+      }
+    }
+
+    if (error is TimeoutException) {
+      return '记录$actionLabel失败：网络超时，请稍后重试。';
+    }
+
+    final String raw = error.toString().toLowerCase();
+    if (raw.contains('socketexception') ||
+        raw.contains('clientexception') ||
+        raw.contains('failed host lookup')) {
+      return '记录$actionLabel失败：网络连接异常，请稍后重试。';
+    }
+
+    return '记录$actionLabel失败，请稍后重试。';
   }
 
   Future<void> _pickManualCode() async {
@@ -160,10 +376,7 @@ class _WarehouseChatScreenState extends State<WarehouseChatScreen> {
       builder: (context) {
         return AlertDialog(
           backgroundColor: AppColors.background,
-          title: const Text(
-            '手动输入色号',
-            style: TextStyle(color: AppColors.white),
-          ),
+          title: const Text('手动输入色号', style: TextStyle(color: AppColors.white)),
           content: TextField(
             controller: controller,
             style: const TextStyle(color: AppColors.white),
@@ -197,17 +410,15 @@ class _WarehouseChatScreenState extends State<WarehouseChatScreen> {
   }
 
   Future<void> _pickAmount() async {
-    final TextEditingController controller =
-        TextEditingController(text: _selectedAmount.toString());
+    final TextEditingController controller = TextEditingController(
+      text: _selectedAmount.toString(),
+    );
     final String? result = await showDialog<String>(
       context: context,
       builder: (context) {
         return AlertDialog(
           backgroundColor: AppColors.background,
-          title: const Text(
-            '输入数量',
-            style: TextStyle(color: AppColors.white),
-          ),
+          title: const Text('输入数量', style: TextStyle(color: AppColors.white)),
           content: TextField(
             controller: controller,
             keyboardType: TextInputType.number,
@@ -268,7 +479,7 @@ class _WarehouseChatScreenState extends State<WarehouseChatScreen> {
                   controller: _scrollController,
                   padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
                   itemCount: _messages.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 12),
+                  separatorBuilder: (_, index) => const SizedBox(height: 12),
                   itemBuilder: (context, index) {
                     return _ChatBubble(message: _messages[index]);
                   },
@@ -423,16 +634,19 @@ class _ChatBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final Color bubbleColor =
-        message.isUser ? const Color(0xFFB3A0FF) : AppColors.white;
-    final Color textColor =
-        message.isUser ? AppColors.white : const Color(0xFF1E1E1E);
+    final Color bubbleColor = message.isUser
+        ? const Color(0xFFB3A0FF)
+        : AppColors.white;
+    final Color textColor = message.isUser
+        ? AppColors.white
+        : const Color(0xFF1E1E1E);
 
     return Align(
       alignment: message.isUser ? Alignment.centerRight : Alignment.centerLeft,
       child: Column(
-        crossAxisAlignment:
-            message.isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        crossAxisAlignment: message.isUser
+            ? CrossAxisAlignment.end
+            : CrossAxisAlignment.start,
         children: [
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -506,8 +720,9 @@ class _ChatComposer extends StatelessWidget {
     final bool showSelector =
         mode == _ComposerMode.deposit || mode == _ComposerMode.withdraw;
     final bool showStats = mode == _ComposerMode.stats;
-    final String actionText =
-        mode == _ComposerMode.withdraw ? '从仓库取豆 - click here' : '向仓库存豆 - click here';
+    final String actionText = mode == _ComposerMode.withdraw
+        ? '从仓库取豆 - click here'
+        : '向仓库存豆 - click here';
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(24),
@@ -523,10 +738,7 @@ class _ChatComposer extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (showStats)
-                _StatsPanel(
-                  stats: stats,
-                ),
+              if (showStats) _StatsPanel(stats: stats),
               if (showSelector)
                 _SelectorPanel(
                   selectedLetter: selectedLetter,
@@ -573,7 +785,9 @@ class _ChatComposer extends StatelessWidget {
                               borderRadius: BorderRadius.circular(20),
                               child: Container(
                                 padding: const EdgeInsets.symmetric(
-                                    horizontal: 16, vertical: 12),
+                                  horizontal: 16,
+                                  vertical: 12,
+                                ),
                                 decoration: BoxDecoration(
                                   color: AppColors.white,
                                   borderRadius: BorderRadius.circular(20),
@@ -590,10 +804,7 @@ class _ChatComposer extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(width: 12),
-                          _CircleIconButton(
-                            icon: Icons.send,
-                            onTap: onSend,
-                          ),
+                          _CircleIconButton(icon: Icons.send, onTap: onSend),
                         ],
                       ),
               ),
@@ -691,7 +902,9 @@ class _SelectorPanel extends StatelessWidget {
             children: [
               _CircleWheelSelector(
                 items: List<String>.generate(
-                    26, (index) => String.fromCharCode(65 + index)),
+                  26,
+                  (index) => String.fromCharCode(65 + index),
+                ),
                 selected: displayCode,
                 onSelect: onSelectLetter,
               ),
@@ -830,10 +1043,7 @@ class _BeanRing {
   final String label;
   final Color ringColor;
 
-  const _BeanRing({
-    required this.label,
-    required this.ringColor,
-  });
+  const _BeanRing({required this.label, required this.ringColor});
 }
 
 class _StatsPanel extends StatelessWidget {
@@ -867,9 +1077,7 @@ class _StatsPanel extends StatelessWidget {
               spacing: 10,
               runSpacing: 10,
               children: stats.favoriteBeans
-                  .map(
-                    (bean) => _RingChip(bean: bean),
-                  )
+                  .map((bean) => _RingChip(bean: bean))
                   .toList(),
             ),
             const SizedBox(height: 16),
@@ -929,10 +1137,7 @@ class _StatValue extends StatelessWidget {
   final String title;
   final int value;
 
-  const _StatValue({
-    required this.title,
-    required this.value,
-  });
+  const _StatValue({required this.title, required this.value});
 
   @override
   Widget build(BuildContext context) {
@@ -1003,4 +1208,20 @@ String _formatTime(DateTime value) {
   return '${hour.toString().padLeft(2, '0')}:$minute $period';
 }
 
-
+Color _parseInventoryColor(String rawColor) {
+  final RegExpMatch? match = RegExp(
+    r'rgba?\(\s*([0-9]+)\s*,\s*([0-9]+)\s*,\s*([0-9]+)',
+  ).firstMatch(rawColor);
+  if (match == null) {
+    return const Color(0xFFBDBDBD);
+  }
+  final int r = int.tryParse(match.group(1) ?? '') ?? 189;
+  final int g = int.tryParse(match.group(2) ?? '') ?? 189;
+  final int b = int.tryParse(match.group(3) ?? '') ?? 189;
+  return Color.fromARGB(
+    255,
+    r.clamp(0, 255).toInt(),
+    g.clamp(0, 255).toInt(),
+    b.clamp(0, 255).toInt(),
+  );
+}

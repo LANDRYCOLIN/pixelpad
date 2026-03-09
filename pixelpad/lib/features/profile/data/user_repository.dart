@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 
@@ -52,7 +53,7 @@ abstract class UserDataSource {
 class BackendUserDataSource implements UserDataSource {
   BackendUserDataSource({
     http.Client? client,
-    this.baseUrl = 'http://backend.edmounds.top',
+    this.baseUrl = 'http://127.0.0.1:8080',
   }) : _client = client ?? http.Client();
 
   final http.Client _client;
@@ -153,13 +154,13 @@ class BackendUserDataSource implements UserDataSource {
       final http.Response fallback = await _client.post(
         Uri.parse('$baseUrl/login'),
         headers: _jsonHeaders(),
-        body: jsonEncode(<String, String>{'phone': phone, 'password': password}),
+        body: jsonEncode(<String, String>{
+          'phone': phone,
+          'password': password,
+        }),
       );
       if (fallback.statusCode != 200) {
-        throw _toApiException(
-          fallback,
-          defaultMessage: 'Failed to login user',
-        );
+        throw _toApiException(fallback, defaultMessage: 'Failed to login user');
       }
       return _parseAuthSession(fallback.body);
     }
@@ -183,7 +184,10 @@ class BackendUserDataSource implements UserDataSource {
       final http.Response fallback = await _client.post(
         Uri.parse('$baseUrl/register'),
         headers: _jsonHeaders(),
-        body: jsonEncode(<String, String>{'phone': phone, 'password': password}),
+        body: jsonEncode(<String, String>{
+          'phone': phone,
+          'password': password,
+        }),
       );
       if (fallback.statusCode != 201 && fallback.statusCode != 200) {
         throw _toApiException(
@@ -289,15 +293,23 @@ class UserRepository {
   UserRepository({
     UserDataSource? dataSource,
     FlutterSecureStorage? secureStorage,
+    DateTime Function()? nowProvider,
+    Duration sessionTtl = const Duration(days: 7),
   }) : _dataSource = dataSource ?? BackendUserDataSource(),
-       _secureStorage = secureStorage ?? const FlutterSecureStorage();
+       _secureStorage = secureStorage ?? const FlutterSecureStorage(),
+       _nowProvider = nowProvider ?? DateTime.now,
+       _sessionTtl = sessionTtl;
 
   final UserDataSource _dataSource;
   final FlutterSecureStorage _secureStorage;
+  final DateTime Function() _nowProvider;
+  final Duration _sessionTtl;
+  final ValueNotifier<int> sessionRevision = ValueNotifier<int>(0);
 
   static const String _accessTokenKey = 'auth_access_token_v1';
   static const String _tokenTypeKey = 'auth_token_type_v1';
   static const String _expiresInKey = 'auth_expires_in_v1';
+  static const String _lastLoginAtKey = 'auth_last_login_at_epoch_ms_v1';
   static const String _sessionUserIdKey = 'current_user_id_v1';
 
   Future<int?> getLoggedInUserId() async {
@@ -308,6 +320,10 @@ class UserRepository {
   Future<String?> getAccessToken() async {
     final String? token = await _secureStorage.read(key: _accessTokenKey);
     if (token == null || token.isEmpty) {
+      return null;
+    }
+    if (await _isSessionExpired()) {
+      await _clearSession();
       return null;
     }
     return token;
@@ -397,6 +413,10 @@ class UserRepository {
   }
 
   Future<void> _saveSession(AuthSession session) async {
+    final String lastLoginAtMillis = _nowProvider()
+        .toUtc()
+        .millisecondsSinceEpoch
+        .toString();
     await _secureStorage.write(
       key: _accessTokenKey,
       value: session.accessToken,
@@ -406,16 +426,39 @@ class UserRepository {
       key: _expiresInKey,
       value: session.expiresIn?.toString(),
     );
+    await _secureStorage.write(key: _lastLoginAtKey, value: lastLoginAtMillis);
     await _secureStorage.write(
       key: _sessionUserIdKey,
       value: session.user.id.toString(),
     );
+    sessionRevision.value++;
+  }
+
+  Future<bool> _isSessionExpired() async {
+    final String? rawLastLoginAt = await _secureStorage.read(
+      key: _lastLoginAtKey,
+    );
+    final int? millis = int.tryParse(rawLastLoginAt ?? '');
+    if (millis == null) {
+      return true;
+    }
+    final DateTime lastLoginAt = DateTime.fromMillisecondsSinceEpoch(
+      millis,
+      isUtc: true,
+    );
+    final Duration elapsed = _nowProvider().toUtc().difference(lastLoginAt);
+    if (elapsed.isNegative) {
+      return false;
+    }
+    return elapsed >= _sessionTtl;
   }
 
   Future<void> _clearSession() async {
     await _secureStorage.delete(key: _accessTokenKey);
     await _secureStorage.delete(key: _tokenTypeKey);
     await _secureStorage.delete(key: _expiresInKey);
+    await _secureStorage.delete(key: _lastLoginAtKey);
     await _secureStorage.delete(key: _sessionUserIdKey);
+    sessionRevision.value++;
   }
 }

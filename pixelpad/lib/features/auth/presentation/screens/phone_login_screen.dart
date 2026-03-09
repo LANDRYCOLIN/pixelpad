@@ -1,4 +1,6 @@
-﻿import 'package:flutter/material.dart';
+﻿import 'dart:async';
+
+import 'package:flutter/material.dart';
 
 import 'package:pixelpad/core/app/app_scope.dart';
 import 'package:pixelpad/core/app/navigation.dart';
@@ -174,16 +176,47 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
         return;
       }
       AppNavigator.pushNamedAndRemoveUntil(context, AppRoutes.mainShell);
-    } catch (_) {
+    } catch (error) {
       if (!mounted) {
         return;
       }
-      setState(() => _error = '登录失败，请检查手机号或密码');
+      setState(() => _error = _formatLoginError(error));
     } finally {
       if (mounted) {
         setState(() => _loading = false);
       }
     }
+  }
+
+  String _formatLoginError(Object error) {
+    if (error is ApiException) {
+      if (error.statusCode == 401 || error.statusCode == 403) {
+        return '手机号或密码错误，请重新输入';
+      }
+      if (error.statusCode == 429) {
+        return '请求过于频繁，请稍后再试';
+      }
+      if (error.statusCode >= 500) {
+        return '服务器繁忙，请稍后再试';
+      }
+      final String detail = error.message.trim();
+      if (detail.isNotEmpty && detail != 'Failed to login user') {
+        return detail;
+      }
+    }
+
+    if (error is TimeoutException) {
+      return '网络超时，请检查网络后重试';
+    }
+
+    final String raw = error.toString().toLowerCase();
+    if (raw.contains('socketexception') ||
+        raw.contains('clientexception') ||
+        raw.contains('failed host lookup')) {
+      return '网络连接失败，请检查网络后重试';
+    }
+
+    return '登录失败，请稍后重试';
   }
 
   Future<void> _handleRegister() async {

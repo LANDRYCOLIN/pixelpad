@@ -1,3 +1,9 @@
 # IDE cauch files
 .vscode/
 .idea/
+
+# Reference symlinks
+pixelpad_backend_reference
+
+
+.agent
