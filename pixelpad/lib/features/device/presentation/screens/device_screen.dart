@@ -1,13 +1,19 @@
-﻿import 'package:flutter/material.dart';
+import 'dart:async';
+
+import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:pixelpad/core/app/app_scope.dart';
 import 'package:pixelpad/core/theme/app_theme.dart';
+import 'package:pixelpad/features/device/data/inventory_api_service.dart';
 import 'package:pixelpad/features/device/data/warehouse_chat_storage.dart';
 import 'package:pixelpad/features/device/domain/services/bluetooth_service.dart';
 import 'package:pixelpad/features/device/presentation/screens/warehouse_chat_screen.dart';
+import 'package:pixelpad/features/make/data/bean_preset_storage.dart';
+import 'package:pixelpad/features/profile/data/user_repository.dart';
 
-const List<_MissingColor> _sampleMissingColors = [
+const List<_MissingColor> _fallbackMissingColors = [
   _MissingColor(label: 'H2', borderColor: Color(0xFFBDBDBD)),
   _MissingColor(label: 'F7', borderColor: Color(0xFF1E1E1E)),
   _MissingColor(label: 'F13', borderColor: Color(0xFFE35A5A)),
@@ -16,10 +22,8 @@ const List<_MissingColor> _sampleMissingColors = [
 class DeviceScreen extends StatefulWidget {
   final WarehouseChatRepository repository;
 
-  const DeviceScreen({
-    super.key,
-    WarehouseChatRepository? repository,
-  }) : repository = repository ?? const LocalWarehouseChatRepository();
+  const DeviceScreen({super.key, WarehouseChatRepository? repository})
+    : repository = repository ?? const LocalWarehouseChatRepository();
 
   @override
   State<DeviceScreen> createState() => _DeviceScreenState();
@@ -35,14 +39,167 @@ class _DeviceScreenState extends State<DeviceScreen> {
   ];
 
   final List<_UsageRecordEntry> _usageRecords = [];
+  final InventoryApiService _inventoryApiService = InventoryApiService();
+  UserRepository? _userRepository;
+
   _RecordFilter _filter = _RecordFilter.all;
+  bool _didLoadInventory = false;
+  bool _didLoadUsageRecords = false;
+  int? _activeBrandId;
+  int _totalStock = 0;
+  int _colorCount = 0;
+  List<_MissingColor> _missingColors = _fallbackMissingColors;
   String? _customDeviceName;
+  String? _syncNotice;
 
   @override
   void initState() {
     super.initState();
     _loadDeviceName();
-    _loadUsageRecords();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final UserRepository repository = AppScope.of(context).userRepository;
+    if (_userRepository != repository) {
+      _userRepository?.sessionRevision.removeListener(_handleSessionChanged);
+      _userRepository = repository;
+      _userRepository?.sessionRevision.addListener(_handleSessionChanged);
+    }
+    if (!_didLoadInventory) {
+      _didLoadInventory = true;
+      unawaited(_loadInventorySummary());
+      unawaited(_pingHealth());
+    }
+    if (!_didLoadUsageRecords) {
+      _didLoadUsageRecords = true;
+      unawaited(_loadUsageRecords());
+    }
+  }
+
+  @override
+  void dispose() {
+    _userRepository?.sessionRevision.removeListener(_handleSessionChanged);
+    super.dispose();
+  }
+
+  void _handleSessionChanged() {
+    unawaited(_reloadForSession());
+  }
+
+  Future<void> _reloadForSession() async {
+    final String? accessToken = await _userRepository?.getAccessToken();
+    if (!mounted) {
+      return;
+    }
+    if (accessToken == null || accessToken.isEmpty) {
+      setState(() {
+        _activeBrandId = null;
+        _totalStock = 0;
+        _colorCount = 0;
+        _missingColors = _fallbackMissingColors;
+        _usageRecords.clear();
+        _syncNotice = '登录后可同步库存与出入库记录';
+      });
+      return;
+    }
+    await _loadInventorySummary();
+    await _loadUsageRecords();
+  }
+
+  Future<void> _pingHealth() async {
+    try {
+      await _inventoryApiService.health();
+    } catch (_) {
+      // Ignore background health check failures.
+    }
+  }
+
+  Future<void> _loadInventorySummary() async {
+    final String? accessToken = await _userRepository?.getAccessToken();
+    if (accessToken == null || accessToken.isEmpty) {
+      if (mounted && _syncNotice == null) {
+        setState(() {
+          _syncNotice = '登录后可同步库存与出入库记录';
+        });
+      }
+      return;
+    }
+    try {
+      final List<InventoryBrand> brands = await _inventoryApiService.listBrands(
+        accessToken: accessToken,
+      );
+      if (brands.isEmpty) {
+        return;
+      }
+      final BeanPreset preset = await BeanPresetStorage.load();
+      final InventoryBrand selectedBrand = _pickBrand(brands, preset.brand);
+      final InventoryBrand brand = await _inventoryApiService.getBrand(
+        brandId: selectedBrand.brandId,
+        accessToken: accessToken,
+      );
+      final List<InventoryBead> beads = await _inventoryApiService.listBeads(
+        brandId: selectedBrand.brandId,
+        accessToken: accessToken,
+      );
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _activeBrandId = selectedBrand.brandId;
+        _totalStock = brand.totalStock;
+        _colorCount = beads.length;
+        _missingColors = _buildMissingColors(beads);
+        _syncNotice = null;
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _syncNotice = _formatSyncNotice(
+          error,
+          fallback: '库存同步失败，已显示本地默认数据',
+        );
+      });
+    }
+  }
+
+  InventoryBrand _pickBrand(List<InventoryBrand> brands, String preferredName) {
+    final String normalized = preferredName.trim().toLowerCase();
+    for (final InventoryBrand brand in brands) {
+      if (brand.brandName.trim().toLowerCase() == normalized) {
+        return brand;
+      }
+    }
+    return brands.first;
+  }
+
+  List<_MissingColor> _buildMissingColors(List<InventoryBead> beads) {
+    if (beads.isEmpty) {
+      return _fallbackMissingColors;
+    }
+    final List<InventoryBead> sorted = List<InventoryBead>.from(beads)
+      ..sort((InventoryBead a, InventoryBead b) {
+        final int stock = a.currentStock.compareTo(b.currentStock);
+        if (stock != 0) {
+          return stock;
+        }
+        return a.beadId.compareTo(b.beadId);
+      });
+    final List<InventoryBead> selected = sorted.take(3).toList();
+    while (selected.length < 3) {
+      selected.add(sorted.first);
+    }
+    return selected
+        .map(
+          (InventoryBead bead) => _MissingColor(
+            label: bead.beadId,
+            borderColor: _parseInventoryColor(bead.color),
+          ),
+        )
+        .toList();
   }
 
   Future<void> _loadDeviceName() async {
@@ -61,17 +218,15 @@ class _DeviceScreenState extends State<DeviceScreen> {
   }
 
   Future<void> _editDeviceName(String current) async {
-    final TextEditingController controller =
-        TextEditingController(text: current);
+    final TextEditingController controller = TextEditingController(
+      text: current,
+    );
     final String? result = await showDialog<String>(
       context: context,
       builder: (context) {
         return AlertDialog(
           backgroundColor: AppColors.background,
-          title: const Text(
-            '修改设备名称',
-            style: TextStyle(color: AppColors.white),
-          ),
+          title: const Text('修改设备名称', style: TextStyle(color: AppColors.white)),
           content: TextField(
             controller: controller,
             style: const TextStyle(color: AppColors.white),
@@ -111,28 +266,107 @@ class _DeviceScreenState extends State<DeviceScreen> {
   }
 
   Future<void> _loadUsageRecords() async {
-    final List<WarehouseChatRecord> records =
-        await widget.repository.load();
+    List<_UsageRecordEntry> entries = <_UsageRecordEntry>[];
+    bool loadedFromRemote = false;
+    final String? accessToken = await _userRepository?.getAccessToken();
+    if (accessToken != null && accessToken.isNotEmpty) {
+      try {
+        final List<InventoryTransaction> transactions =
+            await _inventoryApiService.listTransactions(
+              accessToken: accessToken,
+              limit: 100,
+              offset: 0,
+            );
+        entries = transactions.map(_transactionToUsageEntry).toList();
+        loadedFromRemote = true;
+      } catch (error) {
+        if (mounted) {
+          setState(() {
+            _syncNotice = _formatSyncNotice(
+              error,
+              fallback: '记录同步失败，已切换为本地记录',
+            );
+          });
+        }
+      }
+    }
+    if (entries.isEmpty) {
+      final List<WarehouseChatRecord> records = await widget.repository.load();
+      entries = records
+          .where((record) => record.isUser)
+          .map(_recordToUsageEntry)
+          .whereType<_UsageRecordEntry>()
+          .toList()
+          .reversed
+          .toList();
+    }
     if (!mounted) {
       return;
     }
-    final List<_UsageRecordEntry> entries = records
-        .where((record) => record.isUser)
-        .map(_recordToUsageEntry)
-        .whereType<_UsageRecordEntry>()
-        .toList();
     setState(() {
       _usageRecords
         ..clear()
-        ..addAll(entries.reversed);
+        ..addAll(entries);
+      if (loadedFromRemote) {
+        _syncNotice = null;
+      }
     });
   }
 
+  String _formatSyncNotice(Object error, {required String fallback}) {
+    if (error is InventoryApiException) {
+      if (error.statusCode == 401 || error.statusCode == 403) {
+        return '登录状态已失效，请重新登录后再同步';
+      }
+      if (error.statusCode == 429) {
+        return '请求过于频繁，已暂时显示本地数据';
+      }
+      if (error.statusCode >= 500) {
+        return '服务器繁忙，已暂时显示本地数据';
+      }
+      final String detail = error.message.trim();
+      if (detail.isNotEmpty) {
+        return '$detail（当前显示本地数据）';
+      }
+    }
+
+    if (error is TimeoutException) {
+      return '网络超时，已暂时显示本地数据';
+    }
+
+    final String raw = error.toString().toLowerCase();
+    if (raw.contains('socketexception') ||
+        raw.contains('clientexception') ||
+        raw.contains('failed host lookup')) {
+      return '网络连接失败，已暂时显示本地数据';
+    }
+
+    return fallback;
+  }
+
+  _UsageRecordEntry _transactionToUsageEntry(InventoryTransaction tx) {
+    final DateTime timestamp = (tx.createdAt ?? DateTime.now()).toLocal();
+    final bool isDeposit = tx.action == InventoryTransactionAction.deposit;
+    final int total = tx.totalQuantity > 0
+        ? tx.totalQuantity
+        : tx.details.fold<int>(
+            0,
+            (int sum, InventoryTransactionDetail detail) =>
+                sum + detail.quantity,
+          );
+    return _UsageRecordEntry(
+      monthLabel: '${timestamp.month}月',
+      dayLabel: timestamp.day.toString().padLeft(2, '0'),
+      amountLabel: '${isDeposit ? '+' : '-'}${_formatAmount(total)}',
+      duration: _formatDuration(tx.durationMinutes),
+      isDeposit: isDeposit,
+      supplementColors: _defaultSupplementColors,
+    );
+  }
+
   _UsageRecordEntry? _recordToUsageEntry(WarehouseChatRecord record) {
-    final RegExp deposit =
-        RegExp(r'^我买了(.+?)的豆子(\d+)粒');
-    final RegExp withdraw =
-        RegExp(r'^取出(.+?)的豆子(\d+)粒');
+    final RegExp deposit = RegExp(r'^我买了(.+?)的豆子(\d+)粒');
+    final RegExp withdraw = RegExp(r'^取出(.+?)的豆子(\d+)粒');
     final String text = record.text.trim();
     final DateTime timestamp = record.timestamp;
 
@@ -179,6 +413,21 @@ class _DeviceScreenState extends State<DeviceScreen> {
     return buffer.toString();
   }
 
+  String _formatDuration(int minutes) {
+    if (minutes <= 0) {
+      return '--';
+    }
+    final int hours = minutes ~/ 60;
+    final int remainingMinutes = minutes % 60;
+    if (hours <= 0) {
+      return '$minutes分';
+    }
+    if (remainingMinutes == 0) {
+      return '$hours小时';
+    }
+    return '$hours小时$remainingMinutes分';
+  }
+
   List<_UsageRecordEntry> _filteredRecords() {
     switch (_filter) {
       case _RecordFilter.deposit:
@@ -186,7 +435,6 @@ class _DeviceScreenState extends State<DeviceScreen> {
       case _RecordFilter.withdraw:
         return _usageRecords.where((record) => !record.isDeposit).toList();
       case _RecordFilter.all:
-      default:
         return _usageRecords;
     }
   }
@@ -194,10 +442,10 @@ class _DeviceScreenState extends State<DeviceScreen> {
   @override
   Widget build(BuildContext context) {
     final BluetoothTransferService btService = BluetoothTransferService();
-    // TODO: replace sample data with repository/provider-driven user data.
-    final List<_MissingColor> missingColors = _sampleMissingColors;
-    final List<String> missingColorLabels =
-        missingColors.map((color) => color.label).toList();
+    final List<_MissingColor> missingColors = _missingColors;
+    final List<String> missingColorLabels = missingColors
+        .map((color) => color.label)
+        .toList();
 
     return SafeArea(
       child: ValueListenableBuilder<bool>(
@@ -211,27 +459,38 @@ class _DeviceScreenState extends State<DeviceScreen> {
                 const _DeviceHeader(),
                 const SizedBox(height: 16),
                 _DeviceNameRow(
-                  name: _customDeviceName ??
+                  name:
+                      _customDeviceName ??
                       (connected ? btService.deviceName : 'MyPixel'),
                   onTap: () => _editDeviceName(
                     _customDeviceName ??
                         (connected ? btService.deviceName : 'MyPixel'),
                   ),
                 ),
+                if (_syncNotice != null) ...[
+                  const SizedBox(height: 8),
+                  _SyncNoticeBanner(message: _syncNotice!),
+                ],
                 const SizedBox(height: 12),
                 _DeviceSummaryCard(
                   missingColors: missingColors,
+                  totalStock: _totalStock,
+                  colorCount: _colorCount,
                   onWarehouseTap: () {
                     Navigator.of(context)
                         .push(
-                      MaterialPageRoute(
-                        builder: (_) => WarehouseChatScreen(
-                          missingColors: missingColorLabels,
-                          repository: widget.repository,
-                        ),
-                      ),
-                    )
-                        .then((_) => _loadUsageRecords());
+                          MaterialPageRoute(
+                            builder: (_) => WarehouseChatScreen(
+                              missingColors: missingColorLabels,
+                              brandId: _activeBrandId,
+                              repository: widget.repository,
+                            ),
+                          ),
+                        )
+                        .then((_) {
+                          _loadUsageRecords();
+                          _loadInventorySummary();
+                        });
                   },
                 ),
                 const SizedBox(height: 14),
@@ -247,12 +506,16 @@ class _DeviceScreenState extends State<DeviceScreen> {
                 ),
                 const SizedBox(height: 10),
                 Divider(
-                    color: AppColors.white.withValues(alpha: 0.7), height: 1),
+                  color: AppColors.white.withValues(alpha: 0.7),
+                  height: 1,
+                ),
                 const SizedBox(height: 12),
-                ..._filteredRecords().map((record) => Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: _UsageRecordCard(record: record),
-                    )),
+                ..._filteredRecords().map(
+                  (record) => Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: _UsageRecordCard(record: record),
+                  ),
+                ),
               ],
             ),
           );
@@ -301,11 +564,7 @@ class _HeaderIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SvgPicture.asset(
-      asset,
-      width: size,
-      height: size,
-    );
+    return SvgPicture.asset(asset, width: size, height: size);
   }
 }
 
@@ -313,10 +572,7 @@ class _DeviceNameRow extends StatelessWidget {
   final String name;
   final VoidCallback onTap;
 
-  const _DeviceNameRow({
-    required this.name,
-    required this.onTap,
-  });
+  const _DeviceNameRow({required this.name, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -335,12 +591,35 @@ class _DeviceNameRow extends StatelessWidget {
             ),
           ),
           const Spacer(),
-          const Icon(
-            Icons.chevron_right,
-            color: Color(0xFFF9F871),
-            size: 20,
-          ),
+          const Icon(Icons.chevron_right, color: Color(0xFFF9F871), size: 20),
         ],
+      ),
+    );
+  }
+}
+
+class _SyncNoticeBanner extends StatelessWidget {
+  final String message;
+
+  const _SyncNoticeBanner({required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF9F871).withValues(alpha: 0.2),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFF9F871), width: 1),
+      ),
+      child: Text(
+        message,
+        style: const TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: Color(0xFFF9F871),
+        ),
       ),
     );
   }
@@ -348,10 +627,14 @@ class _DeviceNameRow extends StatelessWidget {
 
 class _DeviceSummaryCard extends StatelessWidget {
   final List<_MissingColor> missingColors;
+  final int totalStock;
+  final int colorCount;
   final VoidCallback onWarehouseTap;
 
   const _DeviceSummaryCard({
     required this.missingColors,
+    required this.totalStock,
+    required this.colorCount,
     required this.onWarehouseTap,
   });
 
@@ -359,14 +642,11 @@ class _DeviceSummaryCard extends StatelessWidget {
       '<svg width="30" height="30" viewBox="0 0 30 30" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="14.5588" cy="14.5588" r="14.5588" fill="#F9F871"/></svg>';
   static const String _colorIconSvg =
       '<svg width="30" height="30" viewBox="0 0 30 30" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="14.5588" cy="14.5588" r="14.5588" fill="#B3A0FF"/></svg>';
-  static const List<Color> _missingRingColors = [
-    Color(0xFFBDBDBD),
-    Color(0xFF1E1E1E),
-    Color(0xFFE35A5A),
-  ];
-
   @override
   Widget build(BuildContext context) {
+    final List<Color> summaryColors = missingColors
+        .map((item) => item.borderColor)
+        .toList();
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -385,20 +665,20 @@ class _DeviceSummaryCard extends StatelessWidget {
                     width: 280,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
-                      children: const [
+                      children: [
                         _SummaryPillRow(
                           iconSvg: _totalIconSvg,
                           label: '总量：',
-                          value: '42,293,299',
+                          value: _formatAmount(totalStock),
                           suffix: 'Bd',
                         ),
-                        SizedBox(height: 10),
+                        const SizedBox(height: 10),
                         SizedBox(
                           width: 230,
                           child: _SummaryPillRow(
                             iconSvg: _colorIconSvg,
                             label: '色号数：',
-                            value: '221',
+                            value: '$colorCount',
                           ),
                         ),
                       ],
@@ -407,9 +687,7 @@ class _DeviceSummaryCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 12),
-              const _SummaryBars(
-                colors: _missingRingColors,
-              ),
+              _SummaryBars(colors: summaryColors),
             ],
           ),
           const SizedBox(height: 12),
@@ -426,6 +704,19 @@ class _DeviceSummaryCard extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  String _formatAmount(int value) {
+    final String raw = value.toString();
+    final StringBuffer buffer = StringBuffer();
+    for (int i = 0; i < raw.length; i++) {
+      final int indexFromEnd = raw.length - i;
+      buffer.write(raw[i]);
+      if (indexFromEnd > 1 && indexFromEnd % 3 == 1) {
+        buffer.write(',');
+      }
+    }
+    return buffer.toString();
   }
 }
 
@@ -612,10 +903,7 @@ class _MissingColorChip extends StatelessWidget {
   final String label;
   final Color borderColor;
 
-  const _MissingColorChip({
-    required this.label,
-    required this.borderColor,
-  });
+  const _MissingColorChip({required this.label, required this.borderColor});
 
   @override
   Widget build(BuildContext context) {
@@ -709,24 +997,6 @@ class _WarehousePanel extends StatelessWidget {
             ),
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _SectionTitle extends StatelessWidget {
-  final String title;
-
-  const _SectionTitle({required this.title});
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      title,
-      style: const TextStyle(
-        fontSize: 20,
-        fontWeight: FontWeight.w700,
-        color: Color(0xFFF9F871),
       ),
     );
   }
@@ -951,10 +1221,7 @@ class _RecordFilterBar extends StatelessWidget {
   final _RecordFilter filter;
   final ValueChanged<_RecordFilter> onChanged;
 
-  const _RecordFilterBar({
-    required this.filter,
-    required this.onChanged,
-  });
+  const _RecordFilterBar({required this.filter, required this.onChanged});
 
   @override
   Widget build(BuildContext context) {
@@ -996,8 +1263,9 @@ class _FilterChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final Color bgColor = selected ? AppColors.arrow : AppColors.white;
-    final Color textColor =
-        selected ? const Color(0xFF1E1E1E) : AppColors.primary;
+    final Color textColor = selected
+        ? const Color(0xFF1E1E1E)
+        : AppColors.primary;
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(18),
@@ -1020,4 +1288,22 @@ class _FilterChip extends StatelessWidget {
       ),
     );
   }
+}
+
+Color _parseInventoryColor(String rawColor) {
+  final RegExpMatch? match = RegExp(
+    r'rgba?\(\s*([0-9]+)\s*,\s*([0-9]+)\s*,\s*([0-9]+)',
+  ).firstMatch(rawColor);
+  if (match == null) {
+    return const Color(0xFFBDBDBD);
+  }
+  final int r = int.tryParse(match.group(1) ?? '') ?? 189;
+  final int g = int.tryParse(match.group(2) ?? '') ?? 189;
+  final int b = int.tryParse(match.group(3) ?? '') ?? 189;
+  return Color.fromARGB(
+    255,
+    r.clamp(0, 255).toInt(),
+    g.clamp(0, 255).toInt(),
+    b.clamp(0, 255).toInt(),
+  );
 }

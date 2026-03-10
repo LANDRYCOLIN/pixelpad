@@ -7,9 +7,11 @@ import 'package:pixelpad/core/theme/app_theme.dart';
 
 class PixelPadApp extends StatelessWidget {
   final AppDependencies dependencies;
+  final String initialRoute;
 
   const PixelPadApp({
     required this.dependencies,
+    this.initialRoute = AppRoutes.splash,
     super.key,
   });
 
@@ -21,7 +23,7 @@ class PixelPadApp extends StatelessWidget {
         title: 'PixelPad',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.light(),
-        initialRoute: AppRoutes.splash,
+        initialRoute: initialRoute,
         routes: AppRoutes.routes,
       ),
     );

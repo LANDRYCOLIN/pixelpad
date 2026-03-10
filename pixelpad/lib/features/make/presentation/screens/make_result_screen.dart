@@ -1,37 +1,24 @@
-﻿import 'dart:typed_data';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:http/http.dart' as http;
 
 import 'package:pixelpad/core/theme/app_theme.dart';
-import 'package:pixelpad/features/make/data/make_api.dart';
 import 'package:pixelpad/features/device/domain/services/bluetooth_service.dart';
-
-class DetectedColor {
-  final String id;
-  final int count;
-  final String hex;
-  final List<int> rgba;
-
-  const DetectedColor({
-    required this.id,
-    required this.count,
-    required this.hex,
-    required this.rgba,
-  });
-}
+import 'package:pixelpad/features/make/data/pixel_renderer.dart';
 
 class MakeResultScreen extends StatefulWidget {
-  final String sessionId;
-  final List<DetectedColor> detectedColors;
+  final Uint16List mapping;
+  final List<List<int>> palette;
+  final Uint8List bgMask;
   final int width;
   final int height;
 
   const MakeResultScreen({
     super.key,
-    required this.sessionId,
-    required this.detectedColors,
+    required this.mapping,
+    required this.palette,
+    required this.bgMask,
     required this.width,
     required this.height,
   });
@@ -44,44 +31,60 @@ class _MakeResultScreenState extends State<MakeResultScreen> {
   Uint8List? _imageBytes;
   bool _loading = false;
   String? _error;
-  final Set<String> _selected = <String>{};
+  final Set<int> _selected = <int>{};
   final BluetoothTransferService _btService = BluetoothTransferService();
   bool _btUploading = false;
+  int _renderVersion = 0;
+
+  List<_ColorToken> get _tokens => List<_ColorToken>.generate(
+    widget.palette.length,
+    (int index) => _ColorToken(
+      index: index,
+      label: '${index + 1}',
+      color: _colorFromRgba(widget.palette[index]),
+    ),
+  );
 
   @override
   void initState() {
     super.initState();
-    _fetchRenderImage();
+    _renderLocalImage();
   }
 
-  Future<void> _fetchRenderImage({String? colorId}) async {
+  Future<void> _renderLocalImage() async {
+    final int currentVersion = ++_renderVersion;
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      final Uri url = Uri.parse('$makeApiBaseUrl/render');
-      final Map<String, String> body = {'session_id': widget.sessionId};
-      if (colorId != null && colorId.isNotEmpty) {
-        body['color_id'] = colorId;
+      final Uint8List? imageBytes = await renderPixelPng(
+        width: widget.width,
+        height: widget.height,
+        mapping: widget.mapping,
+        palette: widget.palette,
+        bgMask: widget.bgMask,
+        selectedIndices: _selected.isEmpty ? null : Set<int>.from(_selected),
+      );
+      if (imageBytes == null) {
+        throw Exception('render_empty');
       }
-      final http.Response response = await http.post(url, body: body);
-      if (response.statusCode != 200) {
-        throw Exception('Render failed: ${response.statusCode}');
+      if (!mounted || currentVersion != _renderVersion) {
+        return;
       }
-      if (!mounted) return;
       setState(() {
-        _imageBytes = response.bodyBytes;
+        _imageBytes = imageBytes;
       });
-      // 蓝牙已连接时自动上传 /render 结果到设备
-      _autoUploadToDevice(response.bodyBytes);
-    } catch (err) {
-      if (!mounted) return;
+      _autoUploadToDevice(imageBytes);
+    } catch (_) {
+      if (!mounted || currentVersion != _renderVersion) {
+        return;
+      }
       setState(() {
-        _error = '加载失败';
+        _error = '渲染失败';
       });
     } finally {
-      if (mounted) {
+      if (mounted && currentVersion == _renderVersion) {
         setState(() {
           _loading = false;
         });
@@ -123,20 +126,15 @@ class _MakeResultScreenState extends State<MakeResultScreen> {
     }
   }
 
-  void _toggleColor(String id) {
+  void _toggleColor(int index) {
     setState(() {
-      if (_selected.contains(id)) {
-        _selected.remove(id);
+      if (_selected.contains(index)) {
+        _selected.remove(index);
       } else {
-        _selected.add(id);
+        _selected.add(index);
       }
     });
-    if (_selected.isEmpty) {
-      _fetchRenderImage();
-      return;
-    }
-    final List<String> selectedIds = _selected.toList()..sort();
-    _fetchRenderImage(colorId: selectedIds.join(','));
+    _renderLocalImage();
   }
 
   @override
@@ -192,14 +190,7 @@ class _MakeResultScreenState extends State<MakeResultScreen> {
                       child: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16),
                         child: _ColorsSection(
-                          tokens: widget.detectedColors
-                              .map(
-                                (color) => _ColorToken(
-                                  color.id,
-                                  _colorFromHex(color.hex),
-                                ),
-                              )
-                              .toList(),
+                          tokens: _tokens,
                           selected: _selected,
                           onToggle: _toggleColor,
                         ),
@@ -325,8 +316,8 @@ class _ResultPreviewCard extends StatelessWidget {
 
 class _ColorsSection extends StatelessWidget {
   final List<_ColorToken> tokens;
-  final Set<String> selected;
-  final ValueChanged<String> onToggle;
+  final Set<int> selected;
+  final ValueChanged<int> onToggle;
 
   const _ColorsSection({
     required this.tokens,
@@ -359,8 +350,8 @@ class _ColorsSection extends StatelessWidget {
                   (token) => _ColorTokenChip(
                     label: token.label,
                     color: token.color,
-                    selected: selected.contains(token.label),
-                    onTap: () => onToggle(token.label),
+                    selected: selected.contains(token.index),
+                    onTap: () => onToggle(token.index),
                   ),
                 )
                 .toList(),
@@ -397,10 +388,15 @@ class _SectionPill extends StatelessWidget {
 }
 
 class _ColorToken {
+  final int index;
   final String label;
   final Color color;
 
-  const _ColorToken(this.label, this.color);
+  const _ColorToken({
+    required this.index,
+    required this.label,
+    required this.color,
+  });
 }
 
 class _ColorTokenChip extends StatelessWidget {
@@ -539,13 +535,11 @@ class _ActionButton extends StatelessWidget {
   }
 }
 
-Color _colorFromHex(String hex) {
-  final String normalized = hex.replaceAll('#', '');
-  if (normalized.length != 6) {
-    return const Color(0xFF000000);
-  }
-  final int value = int.parse(normalized, radix: 16);
-  return Color(0xFF000000 | value);
+Color _colorFromRgba(List<int> rgba) {
+  final int r = rgba.isNotEmpty ? rgba[0].clamp(0, 255).toInt() : 0;
+  final int g = rgba.length > 1 ? rgba[1].clamp(0, 255).toInt() : 0;
+  final int b = rgba.length > 2 ? rgba[2].clamp(0, 255).toInt() : 0;
+  return Color.fromARGB(255, r, g, b);
 }
 
 /// 蓝牙传输进度对话框。

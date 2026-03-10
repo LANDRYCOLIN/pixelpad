@@ -1,12 +1,13 @@
-﻿import 'dart:ui';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
 import 'package:pixelpad/core/app/navigation.dart';
 import 'package:pixelpad/core/theme/app_theme.dart';
+import 'package:pixelpad/features/device/data/inventory_api_service.dart';
 import 'package:pixelpad/features/make/data/bean_preset_storage.dart';
 
-const List<String> _beanBrands = [
+const List<String> _fallbackBeanBrands = [
   'Coco',
   'DMC',
   'manifest',
@@ -16,16 +17,7 @@ const List<String> _beanBrands = [
   'MARD',
 ];
 
-const List<int> _colorCounts = [
-  24,
-  48,
-  72,
-  96,
-  120,
-  144,
-  221,
-  295,
-];
+const List<int> _fallbackColorCounts = [24, 48, 72, 96, 120, 144, 221, 295];
 
 class BeanPresetScreen extends StatefulWidget {
   const BeanPresetScreen({super.key});
@@ -37,8 +29,16 @@ class BeanPresetScreen extends StatefulWidget {
 class _BeanPresetScreenState extends State<BeanPresetScreen> {
   late final PageController _brandController;
   late final PageController _countController;
-  int _brandIndex = _beanBrands.indexOf(BeanPresetStorage.defaultBrand);
-  int _countIndex = _colorCounts.indexOf(BeanPresetStorage.defaultCount);
+  final InventoryApiService _inventoryApiService = InventoryApiService();
+
+  Map<String, List<int>> _countsByBrand = <String, List<int>>{};
+  List<String> _beanBrands = List<String>.from(_fallbackBeanBrands);
+  List<int> _colorCounts = List<int>.from(_fallbackColorCounts);
+  int _brandIndex = _fallbackBeanBrands.indexOf(BeanPresetStorage.defaultBrand);
+  int _countIndex = _fallbackColorCounts.indexOf(
+    BeanPresetStorage.defaultCount,
+  );
+  bool _usingLocalFallback = false;
 
   @override
   void initState() {
@@ -57,7 +57,7 @@ class _BeanPresetScreenState extends State<BeanPresetScreen> {
       viewportFraction: 0.22,
       initialPage: _countIndex,
     );
-    _loadPreset();
+    _bootstrap();
   }
 
   @override
@@ -68,32 +68,125 @@ class _BeanPresetScreenState extends State<BeanPresetScreen> {
   }
 
   void _onBrandChanged(int index) {
-    setState(() => _brandIndex = index);
+    if (_beanBrands.isEmpty) {
+      return;
+    }
+    final int safeIndex = index.clamp(0, _beanBrands.length - 1).toInt();
+    final String brand = _beanBrands[safeIndex];
+    final int? preferred =
+        (_countIndex >= 0 && _countIndex < _colorCounts.length)
+        ? _colorCounts[_countIndex]
+        : null;
+    _applyCountsForBrand(brand, preferredCount: preferred);
+    setState(() => _brandIndex = safeIndex);
+    if (_countController.hasClients) {
+      _countController.jumpToPage(_countIndex);
+    }
   }
 
   void _onCountChanged(int index) {
-    setState(() => _countIndex = index);
+    if (_colorCounts.isEmpty) {
+      return;
+    }
+    setState(() {
+      _countIndex = index.clamp(0, _colorCounts.length - 1).toInt();
+    });
   }
 
-  Future<void> _loadPreset() async {
+  Future<void> _bootstrap() async {
     final BeanPreset preset = await BeanPresetStorage.load();
+    _applyPreset(preset);
+    await _loadRemoteSettings(preset);
+  }
+
+  void _applyPreset(BeanPreset preset) {
     int nextBrand = _beanBrands.indexOf(preset.brand);
-    int nextCount = _colorCounts.indexOf(preset.count);
-
     if (nextBrand < 0) {
-      nextBrand = _brandIndex;
+      nextBrand = _brandIndex.clamp(0, _beanBrands.length - 1).toInt();
     }
-    if (nextCount < 0) {
-      nextCount = _countIndex;
-    }
-
+    final String brand = _beanBrands[nextBrand];
+    _applyCountsForBrand(brand, preferredCount: preset.count);
     if (!mounted) return;
     setState(() {
       _brandIndex = nextBrand;
-      _countIndex = nextCount;
     });
     _brandController.jumpToPage(nextBrand);
-    _countController.jumpToPage(nextCount);
+    _countController.jumpToPage(_countIndex);
+  }
+
+  Future<void> _loadRemoteSettings(BeanPreset preset) async {
+    try {
+      final List<String> files = await _inventoryApiService.listSettingsFiles();
+      final Map<String, List<int>> parsed = _parseSettingsFiles(files);
+      if (!mounted) {
+        return;
+      }
+      if (parsed.isEmpty) {
+        setState(() {
+          _usingLocalFallback = true;
+        });
+        return;
+      }
+      setState(() {
+        _countsByBrand = parsed;
+        _beanBrands = parsed.keys.toList()..sort();
+        _usingLocalFallback = false;
+      });
+      _applyPreset(preset);
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _usingLocalFallback = true;
+      });
+    }
+  }
+
+  Map<String, List<int>> _parseSettingsFiles(List<String> files) {
+    final RegExp pattern = RegExp(
+      r'^(.+)-([0-9]+)\\.json$',
+      caseSensitive: false,
+    );
+    final Map<String, Set<int>> groups = <String, Set<int>>{};
+    for (final String file in files) {
+      final RegExpMatch? match = pattern.firstMatch(file.trim());
+      if (match == null) {
+        continue;
+      }
+      final String brand = (match.group(1) ?? '').trim();
+      final int? count = int.tryParse(match.group(2) ?? '');
+      if (brand.isEmpty || count == null) {
+        continue;
+      }
+      groups.putIfAbsent(brand, () => <int>{}).add(count);
+    }
+    final Map<String, List<int>> result = <String, List<int>>{};
+    groups.forEach((String brand, Set<int> counts) {
+      final List<int> sorted = counts.toList()..sort();
+      if (sorted.isNotEmpty) {
+        result[brand] = sorted;
+      }
+    });
+    return result;
+  }
+
+  void _applyCountsForBrand(String brand, {int? preferredCount}) {
+    final List<int> nextCounts = List<int>.from(
+      _countsByBrand[brand] ?? _fallbackColorCounts,
+    );
+    if (nextCounts.isEmpty) {
+      nextCounts.add(BeanPresetStorage.defaultCount);
+    }
+    int nextCountIndex = 0;
+    if (preferredCount != null) {
+      final int idx = nextCounts.indexOf(preferredCount);
+      if (idx >= 0) {
+        nextCountIndex = idx;
+      }
+    }
+    _colorCounts = nextCounts;
+    _countIndex = nextCountIndex;
   }
 
   Future<void> _savePreset() async {
@@ -103,9 +196,9 @@ class _BeanPresetScreenState extends State<BeanPresetScreen> {
     );
     await BeanPresetStorage.save(preset);
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('已保存预设')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('已保存预设')));
   }
 
   @override
@@ -123,7 +216,10 @@ class _BeanPresetScreenState extends State<BeanPresetScreen> {
                     onTap: () => AppNavigator.pop(context),
                     borderRadius: BorderRadius.circular(20),
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: const [
@@ -167,6 +263,18 @@ class _BeanPresetScreenState extends State<BeanPresetScreen> {
                 color: Color(0xFFBFBFBF),
               ),
             ),
+            if (_usingLocalFallback) ...[
+              const SizedBox(height: 8),
+              const Text(
+                '当前未拉取到在线配置，已使用本地预设。',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFFF9F871),
+                ),
+              ),
+            ],
             const SizedBox(height: 18),
             _PickerBar(
               controller: _brandController,
@@ -213,11 +321,7 @@ class _BeanPresetScreenState extends State<BeanPresetScreen> {
               ),
             ),
             const SizedBox(height: 6),
-            const Icon(
-              Icons.arrow_drop_up,
-              size: 36,
-              color: Color(0xFFF9F871),
-            ),
+            const Icon(Icons.arrow_drop_up, size: 36, color: Color(0xFFF9F871)),
             const SizedBox(height: 12),
             _PickerBar(
               controller: _countController,
@@ -238,10 +342,7 @@ class _BeanPresetScreenState extends State<BeanPresetScreen> {
             const Spacer(),
             Padding(
               padding: const EdgeInsets.only(bottom: 20),
-              child: _FrostedButton(
-                label: '保存',
-                onTap: _savePreset,
-              ),
+              child: _FrostedButton(label: '保存', onTap: _savePreset),
             ),
           ],
         ),
@@ -259,7 +360,8 @@ class _PickerBar extends StatelessWidget {
     int index,
     double scale,
     double opacity,
-  ) itemBuilder;
+  )
+  itemBuilder;
 
   const _PickerBar({
     required this.controller,
@@ -276,7 +378,8 @@ class _PickerBar extends StatelessWidget {
       color: const Color(0xFFB8A6FF),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final double itemWidth = constraints.maxWidth * controller.viewportFraction;
+          final double itemWidth =
+              constraints.maxWidth * controller.viewportFraction;
           final double centerX = constraints.maxWidth / 2;
           final double lineOffset = itemWidth * 0.6;
 
@@ -292,9 +395,13 @@ class _PickerBar extends StatelessWidget {
                       animation: controller,
                       builder: (context, child) {
                         final double page = controller.hasClients
-                            ? controller.page ?? controller.initialPage.toDouble()
+                            ? controller.page ??
+                                  controller.initialPage.toDouble()
                             : controller.initialPage.toDouble();
-                        final double distance = (page - index).abs().clamp(0.0, 2.0);
+                        final double distance = (page - index).abs().clamp(
+                          0.0,
+                          2.0,
+                        );
                         final double scale = 1 - (distance * 0.15);
                         final double opacity = 1 - (distance * 0.3);
 
@@ -303,7 +410,12 @@ class _PickerBar extends StatelessWidget {
                             scale: scale,
                             child: Opacity(
                               opacity: opacity,
-                              child: itemBuilder(context, index, scale, opacity),
+                              child: itemBuilder(
+                                context,
+                                index,
+                                scale,
+                                opacity,
+                              ),
                             ),
                           ),
                         );
@@ -342,10 +454,7 @@ class _FrostedButton extends StatefulWidget {
   final String label;
   final VoidCallback onTap;
 
-  const _FrostedButton({
-    required this.label,
-    required this.onTap,
-  });
+  const _FrostedButton({required this.label, required this.onTap});
 
   @override
   State<_FrostedButton> createState() => _FrostedButtonState();

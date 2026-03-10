@@ -1,22 +1,30 @@
-﻿import 'dart:math';
+import 'dart:math';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import 'package:pixelpad/core/app/app_scope.dart';
 import 'package:pixelpad/core/app/navigation.dart';
-import 'package:pixelpad/core/app/routes.dart';
+import 'package:pixelpad/core/app/startup_route_resolver.dart';
 import 'package:pixelpad/core/theme/app_theme.dart';
 
 class OnboardingPageFour extends StatelessWidget {
   final VoidCallback? onNext;
   final VoidCallback? onSkip;
 
-  const OnboardingPageFour({
-    super.key,
-    this.onNext,
-    this.onSkip,
-  });
+  const OnboardingPageFour({super.key, this.onNext, this.onSkip});
+
+  Future<void> _handleComplete(BuildContext context) async {
+    final StartupRouteResolver resolver = StartupRouteResolver(
+      userRepository: AppScope.of(context).userRepository,
+    );
+    final String routeName = await resolver.resolvePostWelcomeRoute();
+    if (!context.mounted) {
+      return;
+    }
+    AppNavigator.pushNamedAndRemoveUntil(context, routeName);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -34,20 +42,14 @@ class OnboardingPageFour extends StatelessWidget {
                 'assets/source/login_anime/background4.png',
                 fit: BoxFit.cover,
               ),
-              Container(
-                color: Colors.black.withValues(alpha: 0.35),
-              ),
+              Container(color: Colors.black.withValues(alpha: 0.35)),
               SafeArea(
                 child: Align(
                   alignment: Alignment.topRight,
                   child: Padding(
                     padding: const EdgeInsets.only(top: 12, right: 16),
                     child: GestureDetector(
-                      onTap: onSkip ??
-                          () => AppNavigator.pushNamedAndRemoveUntil(
-                                context,
-                                AppRoutes.mainShell,
-                              ),
+                      onTap: onSkip ?? () => _handleComplete(context),
                       behavior: HitTestBehavior.opaque,
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
@@ -126,8 +128,7 @@ class OnboardingPageFour extends StatelessWidget {
                     _FrostedButton(
                       label: '开始',
                       width: buttonWidth,
-                      onTap: onNext ??
-                          () => AppNavigator.pushNamed(context, AppRoutes.login),
+                      onTap: onNext ?? () => _handleComplete(context),
                     ),
                   ],
                 ),
@@ -236,4 +237,3 @@ class _FrostedButtonState extends State<_FrostedButton> {
     );
   }
 }
-

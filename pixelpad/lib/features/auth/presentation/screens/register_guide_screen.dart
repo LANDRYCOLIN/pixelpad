@@ -1,4 +1,6 @@
-﻿import 'package:flutter/material.dart';
+﻿import 'dart:async';
+
+import 'package:flutter/material.dart';
 
 import 'package:pixelpad/core/app/app_scope.dart';
 import 'package:pixelpad/core/app/navigation.dart';
@@ -222,6 +224,10 @@ class _RegisterGuideScreenState extends State<RegisterGuideScreen> {
       setState(() => _error = '请输入手机号和密码');
       return;
     }
+    if (!_agreed) {
+      setState(() => _error = '请先阅读并同意《用户协议》和《隐私政策》');
+      return;
+    }
     setState(() {
       _loading = true;
       _error = null;
@@ -235,16 +241,50 @@ class _RegisterGuideScreenState extends State<RegisterGuideScreen> {
         context,
         AppRoutes.profileGuideIntro,
       );
-    } catch (_) {
+    } catch (error) {
       if (!mounted) {
         return;
       }
-      setState(() => _error = '注册失败，请稍后重试');
+      setState(() => _error = _formatRegisterError(error));
     } finally {
       if (mounted) {
         setState(() => _loading = false);
       }
     }
+  }
+
+  String _formatRegisterError(Object error) {
+    if (error is ApiException) {
+      if (error.statusCode == 409) {
+        return '该手机号已注册，请直接登录';
+      }
+      if (error.statusCode == 400 || error.statusCode == 422) {
+        return '手机号或密码格式不正确，请检查后重试';
+      }
+      if (error.statusCode == 429) {
+        return '请求过于频繁，请稍后再试';
+      }
+      if (error.statusCode >= 500) {
+        return '服务器繁忙，请稍后再试';
+      }
+      final String detail = error.message.trim();
+      if (detail.isNotEmpty && detail != 'Failed to register user') {
+        return detail;
+      }
+    }
+
+    if (error is TimeoutException) {
+      return '网络超时，请检查网络后重试';
+    }
+
+    final String raw = error.toString().toLowerCase();
+    if (raw.contains('socketexception') ||
+        raw.contains('clientexception') ||
+        raw.contains('failed host lookup')) {
+      return '网络连接失败，请检查网络后重试';
+    }
+
+    return '注册失败，请稍后重试';
   }
 }
 
@@ -298,4 +338,3 @@ class _InputField extends StatelessWidget {
     );
   }
 }
-

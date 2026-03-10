@@ -1,18 +1,18 @@
 import 'dart:async';
 import 'dart:math';
-import 'dart:convert';
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:http/http.dart' as http;
-import 'package:image_editor/image_editor.dart';
+import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart' as picker;
 
 import 'package:pixelpad/core/theme/app_theme.dart';
-import 'package:pixelpad/features/make/data/make_api.dart';
 import 'package:pixelpad/features/make/data/bean_preset_storage.dart';
+import 'package:pixelpad/features/make/data/pixel_codec.dart';
+import 'package:pixelpad/features/make/data/pixelpad_api_service.dart';
 import 'package:pixelpad/features/make/presentation/screens/make_result_screen.dart';
 import 'package:pixelpad/features/make/presentation/screens/bean_preset_screen.dart';
 
@@ -28,37 +28,23 @@ const List<String> _galleryAssets = [
 ];
 
 class _ProcessResult {
-  final String sessionId;
   final int totalPixels;
   final List<_DetectedColor> detectedColors;
+  final Uint16List mapping;
+  final List<List<int>> palette;
+  final Uint8List bgMask;
   final int width;
   final int height;
-  final String settingsFile;
 
   const _ProcessResult({
-    required this.sessionId,
     required this.totalPixels,
     required this.detectedColors,
+    required this.mapping,
+    required this.palette,
+    required this.bgMask,
     required this.width,
     required this.height,
-    required this.settingsFile,
   });
-
-  factory _ProcessResult.fromJson(Map<String, dynamic> json) {
-    final List<dynamic> rawColors =
-        (json['detected_colors'] as List<dynamic>? ?? []);
-    return _ProcessResult(
-      sessionId: json['session_id'] as String? ?? '',
-      totalPixels: (json['total_pixels'] as num?)?.toInt() ?? 0,
-      detectedColors: rawColors
-          .whereType<Map<String, dynamic>>()
-          .map(_DetectedColor.fromJson)
-          .toList(),
-      width: (json['width'] as num?)?.toInt() ?? 0,
-      height: (json['height'] as num?)?.toInt() ?? 0,
-      settingsFile: json['settings_file'] as String? ?? '',
-    );
-  }
 }
 
 class _DetectedColor {
@@ -74,17 +60,70 @@ class _DetectedColor {
     required this.rgba,
   });
 
-  factory _DetectedColor.fromJson(Map<String, dynamic> json) {
+  factory _DetectedColor.fromPalette({
+    required int index,
+    required int count,
+    required List<int> rgba,
+  }) {
     return _DetectedColor(
-      id: json['id'] as String? ?? '',
-      count: (json['count'] as num?)?.toInt() ?? 0,
-      hex: json['hex'] as String? ?? '',
-      rgba: (json['rgba'] as List<dynamic>? ?? const [])
-          .whereType<num>()
-          .map((value) => value.toInt())
-          .toList(),
+      id: '${index + 1}',
+      count: count,
+      hex: _rgbaToHex(rgba),
+      rgba: rgba,
     );
   }
+}
+
+class _PipelineException implements Exception {
+  final String message;
+
+  const _PipelineException(this.message);
+}
+
+List<_DetectedColor> _buildDetectedColors(
+  List<List<int>> palette,
+  Uint16List mapping,
+  Uint8List bgMask,
+  int totalPixels,
+) {
+  final int pixels = min(totalPixels, min(mapping.length, bgMask.length));
+  final List<int> counts = List<int>.filled(palette.length, 0);
+  for (int i = 0; i < pixels; i += 1) {
+    if (bgMask[i] != 0) {
+      continue;
+    }
+    final int colorIndex = mapping[i];
+    if (colorIndex > 0 && colorIndex <= counts.length) {
+      counts[colorIndex - 1] += 1;
+    }
+  }
+
+  return List<_DetectedColor>.generate(palette.length, (int index) {
+    final List<int> rgba = _normalizeRgba(palette[index]);
+    return _DetectedColor.fromPalette(
+      index: index,
+      count: counts[index],
+      rgba: rgba,
+    );
+  });
+}
+
+List<int> _normalizeRgba(List<int> color) {
+  final int r = color.isNotEmpty ? color[0].clamp(0, 255).toInt() : 0;
+  final int g = color.length > 1 ? color[1].clamp(0, 255).toInt() : 0;
+  final int b = color.length > 2 ? color[2].clamp(0, 255).toInt() : 0;
+  final int a = color.length > 3 ? color[3].clamp(0, 255).toInt() : 255;
+  return <int>[r, g, b, a];
+}
+
+String _rgbaToHex(List<int> rgba) {
+  final int r = rgba.isNotEmpty ? rgba[0] : 0;
+  final int g = rgba.length > 1 ? rgba[1] : 0;
+  final int b = rgba.length > 2 ? rgba[2] : 0;
+  return '#'
+      '${r.toRadixString(16).padLeft(2, '0')}'
+      '${g.toRadixString(16).padLeft(2, '0')}'
+      '${b.toRadixString(16).padLeft(2, '0')}';
 }
 
 class MakeScreen extends StatelessWidget {
@@ -566,6 +605,8 @@ class _OptionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final TextStyle baseTextStyle =
+        Theme.of(context).textTheme.bodyLarge ?? const TextStyle();
     return SizedBox(
       width: 136,
       height: 32,
@@ -578,8 +619,7 @@ class _OptionButton extends StatelessWidget {
           child: Center(
             child: Text(
               label,
-              style: TextStyle(
-                fontFamily: 'Outfit',
+              style: baseTextStyle.copyWith(
                 fontSize: 20,
                 height: 26 / 20,
                 letterSpacing: -0.1,
@@ -834,12 +874,7 @@ class _ImageEditorScreenState extends State<_ImageEditorScreen> {
     w = min(w, _imageSize.width - _drawStartPx!.dx);
     h = min(h, _imageSize.height - _drawStartPx!.dy);
     setState(() {
-      _cropRectPx = Rect.fromLTWH(
-        _drawStartPx!.dx,
-        _drawStartPx!.dy,
-        w,
-        h,
-      );
+      _cropRectPx = Rect.fromLTWH(_drawStartPx!.dx, _drawStartPx!.dy, w, h);
     });
   }
 
@@ -902,7 +937,7 @@ class _ImageEditorScreenState extends State<_ImageEditorScreen> {
     });
   }
 
-  Future<void> _runEdit(ImageEditorOption option) async {
+  Future<void> _runEdit(img.Command command) async {
     if (_processing) {
       return;
     }
@@ -913,10 +948,14 @@ class _ImageEditorScreenState extends State<_ImageEditorScreen> {
     Uint8List? result;
     Object? error;
     try {
-      result = await ImageEditor.editImage(
-        image: _displayBytes,
-        imageEditorOption: option,
-      );
+      final Uint8List source = _displayBytes;
+      result = await Future.microtask(() async {
+        command.decodeImage(source);
+        await command.execute();
+        final img.Image? edited = command.outputImage;
+        if (edited == null) return null;
+        return Uint8List.fromList(img.encodePng(edited));
+      });
     } catch (e) {
       error = e;
     }
@@ -950,18 +989,14 @@ class _ImageEditorScreenState extends State<_ImageEditorScreen> {
     if (!_hasCropRect) {
       return;
     }
-    final ImageEditorOption option = ImageEditorOption();
-    option.addOption(
-      ClipOption.fromRect(
-        ui.Rect.fromLTWH(
-          _cropRectPx.left,
-          _cropRectPx.top,
-          _cropRectPx.width,
-          _cropRectPx.height,
-        ),
-      ),
-    );
-    await _runEdit(option);
+    final int x = _cropRectPx.left.round();
+    final int y = _cropRectPx.top.round();
+    final int w = _cropRectPx.width.round();
+    final int h = _cropRectPx.height.round();
+
+    final cmd = img.Command()..copyCrop(x: x, y: y, width: w, height: h);
+    await _runEdit(cmd);
+
     if (mounted) {
       setState(() {
         _cropDirty = false;
@@ -970,90 +1005,32 @@ class _ImageEditorScreenState extends State<_ImageEditorScreen> {
   }
 
   Future<Uint8List?> _buildCroppedBytes(Uint8List source) async {
-    final ImageEditorOption option = ImageEditorOption();
-    option.addOption(
-      ClipOption.fromRect(
-        ui.Rect.fromLTWH(
-          _cropRectPx.left,
-          _cropRectPx.top,
-          _cropRectPx.width,
-          _cropRectPx.height,
-        ),
-      ),
-    );
-    return ImageEditor.editImage(image: source, imageEditorOption: option);
+    return Future.microtask(() {
+      final img.Image? decoded = img.decodeImage(source);
+      if (decoded == null) return null;
+      final int x = _cropRectPx.left.round();
+      final int y = _cropRectPx.top.round();
+      final int w = _cropRectPx.width.round();
+      final int h = _cropRectPx.height.round();
+      final cropped = img.copyCrop(decoded, x: x, y: y, width: w, height: h);
+      return Uint8List.fromList(img.encodePng(cropped));
+    });
   }
 
   Future<void> _applyScale() async {
-    final ui.Image image = await _decodeImage(_displayBytes);
-    final int width = (image.width * 0.8).round();
-    final int height = (image.height * 0.8).round();
-
-    final ImageEditorOption option = ImageEditorOption();
-    option.addOption(ScaleOption(width, height));
-    await _runEdit(option);
+    final cmd = img.Command()
+      ..copyResize(width: (_imageSize.width * 0.8).round());
+    await _runEdit(cmd);
   }
 
   Future<void> _applyGrayFilter() async {
-    final ImageEditorOption option = ImageEditorOption();
-    option.addOption(
-      ColorOption(
-        matrix: <double>[
-          0.2126,
-          0.7152,
-          0.0722,
-          0,
-          0,
-          0.2126,
-          0.7152,
-          0.0722,
-          0,
-          0,
-          0.2126,
-          0.7152,
-          0.0722,
-          0,
-          0,
-          0,
-          0,
-          0,
-          1,
-          0,
-        ],
-      ),
-    );
-    await _runEdit(option);
+    final cmd = img.Command()..grayscale();
+    await _runEdit(cmd);
   }
 
   Future<void> _applySepiaFilter() async {
-    final ImageEditorOption option = ImageEditorOption();
-    option.addOption(
-      ColorOption(
-        matrix: <double>[
-          0.393,
-          0.769,
-          0.189,
-          0,
-          0,
-          0.349,
-          0.686,
-          0.168,
-          0,
-          0,
-          0.272,
-          0.534,
-          0.131,
-          0,
-          0,
-          0,
-          0,
-          0,
-          1,
-          0,
-        ],
-      ),
-    );
-    await _runEdit(option);
+    final cmd = img.Command()..sepia();
+    await _runEdit(cmd);
   }
 
   void _resetEdits() {
@@ -1067,50 +1044,193 @@ class _ImageEditorScreenState extends State<_ImageEditorScreen> {
   }
 
   Future<_ProcessResult> _uploadToBackend(Uint8List bytes) async {
+    final PixelPadApiService api = const PixelPadApiService();
     final BeanPreset preset = await BeanPresetStorage.load();
-    final http.MultipartRequest request = http.MultipartRequest(
-      'POST',
-      Uri.parse('$makeApiBaseUrl/process'),
-    );
-    request.fields['settings_file'] = preset.settingsFile;
-    request.fields['max_colors'] = preset.count.toString();
-    request.files.add(
-      http.MultipartFile.fromBytes('file', bytes, filename: 'upload.png'),
-    );
-
-    final http.StreamedResponse streamed = await request
-        .send()
-        .timeout(const Duration(seconds: 20));
-    final http.Response response = await http.Response.fromStream(streamed)
-        .timeout(const Duration(seconds: 20));
-    if (response.statusCode != 200) {
-      throw Exception('Process failed: ${response.statusCode}');
+    SessionResult sessionResult;
+    try {
+      sessionResult = await api.createSession(
+        imageBytes: bytes,
+        settingsFile: preset.settingsFile,
+        maxColors: preset.count,
+      );
+    } catch (error) {
+      throw _PipelineException(
+        _formatPipelineStepError(step: '创建会话', error: error),
+      );
+    }
+    if (sessionResult.sessionId.isEmpty) {
+      throw const _PipelineException('创建会话失败');
     }
 
-    final Map<String, dynamic> processJson =
-        (jsonDecode(response.body) as Map<String, dynamic>? ?? {});
-    final String sessionId = processJson['session_id'] as String? ?? '';
+    PerfectPixelResult perfectResult;
+    try {
+      perfectResult = await api.perfectPixel(
+        sessionId: sessionResult.sessionId,
+        maxColors: preset.count,
+        mergeThreshold: 12.0,
+      );
+    } catch (error) {
+      throw _PipelineException(
+        _formatPipelineStepError(step: '像素优化', error: error),
+      );
+    }
 
-    if (sessionId.isNotEmpty) {
-      final http.Response perfectResponse = await http
-          .post(
-            Uri.parse('$makeApiBaseUrl/perfect_pixel'),
-            body: {
-              'session_id': sessionId,
-              'max_colors': preset.count.toString(),
-              'merge_threshold': '12.0',
-            },
-          )
-          .timeout(const Duration(seconds: 20));
+    RemoveBackgroundResult removeResult;
+    try {
+      removeResult = await api.removeBackground(
+        sessionId: sessionResult.sessionId,
+      );
+    } catch (error) {
+      throw _PipelineException(
+        _formatPipelineStepError(step: '背景移除', error: error),
+      );
+    }
 
-      if (perfectResponse.statusCode == 200) {
-        final Map<String, dynamic> perfectJson =
-            (jsonDecode(perfectResponse.body) as Map<String, dynamic>? ?? {});
-        return _ProcessResult.fromJson(perfectJson);
+    ColorMapResult colorMapResult;
+    try {
+      colorMapResult = await api.colorMap(
+        sessionId: sessionResult.sessionId,
+        colorMapMode: 'nearest',
+        alphaHarden: true,
+      );
+    } catch (error) {
+      throw _PipelineException(
+        _formatPipelineStepError(step: '颜色映射', error: error),
+      );
+    }
+
+    final int perfectWidth = (perfectResult.width > 0)
+        ? perfectResult.width
+        : sessionResult.width;
+    final int perfectHeight = (perfectResult.height > 0)
+        ? perfectResult.height
+        : sessionResult.height;
+    final int removeWidth = (removeResult.width > 0)
+        ? removeResult.width
+        : perfectWidth;
+    final int removeHeight = (removeResult.height > 0)
+        ? removeResult.height
+        : perfectHeight;
+    final int colorMapWidth = (colorMapResult.width > 0)
+        ? colorMapResult.width
+        : removeWidth;
+    final int colorMapHeight = (colorMapResult.height > 0)
+        ? colorMapResult.height
+        : removeHeight;
+    final int width = (colorMapWidth > 0)
+        ? colorMapWidth
+        : ((removeWidth > 0) ? removeWidth : perfectWidth);
+    final int height = (colorMapHeight > 0)
+        ? colorMapHeight
+        : ((removeHeight > 0) ? removeHeight : perfectHeight);
+    if (width <= 0 || height <= 0) {
+      throw const _PipelineException('图像尺寸无效');
+    }
+    final int totalPixels = width * height;
+    final int perfectTotalPixels = perfectWidth * perfectHeight;
+    final int removeTotalPixels = removeWidth * removeHeight;
+
+    if (perfectResult.rgbaU8Base64.isNotEmpty) {
+      final Uint8List rgba = decodeRgbaU8(perfectResult.rgbaU8Base64);
+      if (rgba.length != perfectTotalPixels * 4) {
+        throw const _PipelineException('像素优化结果异常');
       }
     }
 
-    return _ProcessResult.fromJson(processJson);
+    final Uint16List mapping = decodeMappingU16le(
+      colorMapResult.mappingU16leBase64,
+    );
+    final Uint8List decodedBgMask = decodeRleMask(
+      removeResult.bgMaskRleU32leBase64,
+      removeResult.bgMaskStart,
+      removeTotalPixels > 0 ? removeTotalPixels : totalPixels,
+    );
+    final Uint8List bgMask = alignMaskToExpectedOrZero(
+      decodedMask: decodedBgMask,
+      expectedPixels: totalPixels,
+    );
+
+    final String diagnostics =
+        'pp=$perfectWidth x $perfectHeight, '
+        'rb=$removeWidth x $removeHeight, '
+        'cm=$colorMapWidth x $colorMapHeight, '
+        'final=$width x $height, '
+        'mapping=${mapping.length}, '
+        'mask=${decodedBgMask.length}';
+
+    if (mapping.length != totalPixels) {
+      throw _PipelineException('颜色映射解码失败 ($diagnostics)');
+    }
+
+    final List<_DetectedColor> detectedColors = _buildDetectedColors(
+      colorMapResult.palette,
+      mapping,
+      bgMask,
+      totalPixels,
+    );
+
+    return _ProcessResult(
+      totalPixels: totalPixels,
+      detectedColors: detectedColors,
+      mapping: mapping,
+      palette: colorMapResult.palette,
+      bgMask: bgMask,
+      width: width,
+      height: height,
+    );
+  }
+
+  String _formatPipelineStepError({
+    required String step,
+    required Object error,
+  }) {
+    if (error is TimeoutException) {
+      return '$step超时，请检查网络后重试';
+    }
+
+    final String raw = error.toString().toLowerCase();
+    if (raw.contains('socketexception') ||
+        raw.contains('clientexception') ||
+        raw.contains('failed host lookup')) {
+      return '网络连接失败，请检查网络后重试';
+    }
+
+    final int? statusCode = _extractPipelineStatusCode(error.toString());
+    if (statusCode == 401 || statusCode == 403) {
+      return '登录状态已失效，请重新登录后再试';
+    }
+    if (statusCode == 413) {
+      return '图片过大，请压缩后重试';
+    }
+    if (statusCode == 429) {
+      return '请求过于频繁，请稍后再试';
+    }
+    if (statusCode != null && statusCode >= 500) {
+      return '$step失败，服务器繁忙，请稍后再试';
+    }
+
+    return '$step失败，请稍后重试';
+  }
+
+  int? _extractPipelineStatusCode(String text) {
+    final RegExpMatch? match = RegExp(r'_failed:(\d{3})').firstMatch(text);
+    if (match == null) {
+      return null;
+    }
+    return int.tryParse(match.group(1) ?? '');
+  }
+
+  String _formatUploadUnexpectedError(Object error) {
+    if (error is TimeoutException) {
+      return '处理超时，请检查网络后重试';
+    }
+    final String raw = error.toString().toLowerCase();
+    if (raw.contains('socketexception') ||
+        raw.contains('clientexception') ||
+        raw.contains('failed host lookup')) {
+      return '网络连接失败，请检查网络后重试';
+    }
+    return '处理失败，请稍后重试';
   }
 
   Future<void> _handleComplete() async {
@@ -1133,17 +1253,9 @@ class _ImageEditorScreenState extends State<_ImageEditorScreen> {
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (context) => MakeResultScreen(
-            sessionId: result.sessionId,
-            detectedColors: result.detectedColors
-                .map(
-                  (color) => DetectedColor(
-                    id: color.id,
-                    count: color.count,
-                    hex: color.hex,
-                    rgba: color.rgba,
-                  ),
-                )
-                .toList(),
+            mapping: result.mapping,
+            palette: result.palette,
+            bgMask: result.bgMask,
             width: result.width,
             height: result.height,
           ),
@@ -1151,9 +1263,13 @@ class _ImageEditorScreenState extends State<_ImageEditorScreen> {
       );
     } catch (error) {
       if (!mounted) return;
+      final String message = switch (error) {
+        _PipelineException(message: final String msg) => msg,
+        _ => _formatUploadUnexpectedError(error),
+      };
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('上传失败，请重试')));
+      ).showSnackBar(SnackBar(content: Text(message)));
     } finally {
       if (mounted) {
         setState(() {
