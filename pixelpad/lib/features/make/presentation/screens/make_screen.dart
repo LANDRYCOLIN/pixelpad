@@ -11,6 +11,7 @@ import 'package:image_picker/image_picker.dart' as picker;
 
 import 'package:pixelpad/core/theme/app_theme.dart';
 import 'package:pixelpad/features/make/data/bean_preset_storage.dart';
+import 'package:pixelpad/features/make/data/palette_mapping.dart';
 import 'package:pixelpad/features/make/data/pixel_codec.dart';
 import 'package:pixelpad/features/make/data/pixelpad_api_service.dart';
 import 'package:pixelpad/features/make/presentation/screens/make_result_screen.dart';
@@ -27,11 +28,14 @@ const List<String> _galleryAssets = [
   'assets/source/mygallery.png',
 ];
 
+// TODO: Replace this fixed backend cap when the UI exposes max_colors.
+const int _backendMaxColors = 24;
+
 class _ProcessResult {
   final int totalPixels;
   final List<_DetectedColor> detectedColors;
   final Uint16List mapping;
-  final List<List<int>> palette;
+  final List<PaletteColorEntry> palette;
   final Uint8List bgMask;
   final int width;
   final int height;
@@ -61,12 +65,12 @@ class _DetectedColor {
   });
 
   factory _DetectedColor.fromPalette({
-    required int index,
+    required String id,
     required int count,
     required List<int> rgba,
   }) {
     return _DetectedColor(
-      id: '${index + 1}',
+      id: id,
       count: count,
       hex: _rgbaToHex(rgba),
       rgba: rgba,
@@ -81,28 +85,29 @@ class _PipelineException implements Exception {
 }
 
 List<_DetectedColor> _buildDetectedColors(
-  List<List<int>> palette,
+  List<PaletteColorEntry> palette,
   Uint16List mapping,
   Uint8List bgMask,
   int totalPixels,
 ) {
   final int pixels = min(totalPixels, min(mapping.length, bgMask.length));
-  final List<int> counts = List<int>.filled(palette.length, 0);
+  final Map<int, int> countsByIdx = <int, int>{};
   for (int i = 0; i < pixels; i += 1) {
     if (bgMask[i] != 0) {
       continue;
     }
-    final int colorIndex = mapping[i];
-    if (colorIndex > 0 && colorIndex <= counts.length) {
-      counts[colorIndex - 1] += 1;
+    final int paletteIdx = mapping[i];
+    if (paletteIdx > 0) {
+      countsByIdx[paletteIdx] = (countsByIdx[paletteIdx] ?? 0) + 1;
     }
   }
 
   return List<_DetectedColor>.generate(palette.length, (int index) {
-    final List<int> rgba = _normalizeRgba(palette[index]);
+    final PaletteColorEntry entry = palette[index];
+    final List<int> rgba = _normalizeRgba(entry.rgba);
     return _DetectedColor.fromPalette(
-      index: index,
-      count: counts[index],
+      id: entry.id,
+      count: countsByIdx[entry.idx] ?? entry.count,
       rgba: rgba,
     );
   });
@@ -1051,7 +1056,6 @@ class _ImageEditorScreenState extends State<_ImageEditorScreen> {
       sessionResult = await api.createSession(
         imageBytes: bytes,
         settingsFile: preset.settingsFile,
-        maxColors: preset.count,
       );
     } catch (error) {
       throw _PipelineException(
@@ -1066,8 +1070,6 @@ class _ImageEditorScreenState extends State<_ImageEditorScreen> {
     try {
       perfectResult = await api.perfectPixel(
         sessionId: sessionResult.sessionId,
-        maxColors: preset.count,
-        mergeThreshold: 12.0,
       );
     } catch (error) {
       throw _PipelineException(
@@ -1090,6 +1092,7 @@ class _ImageEditorScreenState extends State<_ImageEditorScreen> {
     try {
       colorMapResult = await api.colorMap(
         sessionId: sessionResult.sessionId,
+        maxColors: _backendMaxColors,
         colorMapMode: 'nearest',
         alphaHarden: true,
       );
@@ -1117,16 +1120,15 @@ class _ImageEditorScreenState extends State<_ImageEditorScreen> {
     final int colorMapHeight = (colorMapResult.height > 0)
         ? colorMapResult.height
         : removeHeight;
-    final int width = (colorMapWidth > 0)
+    int width = (colorMapWidth > 0)
         ? colorMapWidth
         : ((removeWidth > 0) ? removeWidth : perfectWidth);
-    final int height = (colorMapHeight > 0)
+    int height = (colorMapHeight > 0)
         ? colorMapHeight
         : ((removeHeight > 0) ? removeHeight : perfectHeight);
     if (width <= 0 || height <= 0) {
       throw const _PipelineException('图像尺寸无效');
     }
-    final int totalPixels = width * height;
     final int perfectTotalPixels = perfectWidth * perfectHeight;
     final int removeTotalPixels = removeWidth * removeHeight;
 
@@ -1137,18 +1139,102 @@ class _ImageEditorScreenState extends State<_ImageEditorScreen> {
       }
     }
 
-    final Uint16List mapping = decodeMappingU16le(
-      colorMapResult.mappingU16leBase64,
-    );
+    Uint16List mapping = decodeMappingU16le(colorMapResult.mappingU16leBase64);
+    if (mapping.length != width * height) {
+      throw _PipelineException(
+        '颜色映射解码失败 (cm=$colorMapWidth x $colorMapHeight, mapping=${mapping.length})',
+      );
+    }
+
     final Uint8List decodedBgMask = decodeRleMask(
       removeResult.bgMaskRleU32leBase64,
       removeResult.bgMaskStart,
-      removeTotalPixels > 0 ? removeTotalPixels : totalPixels,
+      removeTotalPixels > 0 ? removeTotalPixels : width * height,
     );
-    final Uint8List bgMask = alignMaskToExpectedOrZero(
-      decodedMask: decodedBgMask,
-      expectedPixels: totalPixels,
-    );
+
+    final List<({int width, int height})> previewCanvasCandidates =
+        <({int width, int height})>[
+          if (removeWidth > 0 && removeHeight > 0)
+            (width: removeWidth, height: removeHeight),
+          if (perfectWidth > 0 && perfectHeight > 0)
+            (width: perfectWidth, height: perfectHeight),
+          if (sessionResult.width > 0 && sessionResult.height > 0)
+            (width: sessionResult.width, height: sessionResult.height),
+        ];
+
+    PreviewInsets? previewInsets;
+    for (final ({int width, int height}) candidate in previewCanvasCandidates) {
+      final List<PreviewInsets> matches = matchingPreviewInsets(
+        rawPadding: colorMapResult.previewPadding,
+        innerWidth: colorMapWidth,
+        innerHeight: colorMapHeight,
+        canvasWidth: candidate.width,
+        canvasHeight: candidate.height,
+      );
+      if (matches.isEmpty) {
+        continue;
+      }
+      if (matches.length == 1 ||
+          decodedBgMask.length != candidate.width * candidate.height) {
+        previewInsets = matches.first;
+      } else {
+        previewInsets = matches.reduce((
+          PreviewInsets best,
+          PreviewInsets next,
+        ) {
+          final int bestPenalty = previewInsetsMaskPenalty(
+            mask: decodedBgMask,
+            innerWidth: colorMapWidth,
+            innerHeight: colorMapHeight,
+            canvasWidth: candidate.width,
+            canvasHeight: candidate.height,
+            insets: best,
+          );
+          final int nextPenalty = previewInsetsMaskPenalty(
+            mask: decodedBgMask,
+            innerWidth: colorMapWidth,
+            innerHeight: colorMapHeight,
+            canvasWidth: candidate.width,
+            canvasHeight: candidate.height,
+            insets: next,
+          );
+          return nextPenalty < bestPenalty ? next : best;
+        });
+      }
+      if (previewInsets != null) {
+        width = candidate.width;
+        height = candidate.height;
+        mapping = expandMappingToCanvas(
+          mapping: mapping,
+          innerWidth: colorMapWidth,
+          innerHeight: colorMapHeight,
+          canvasWidth: width,
+          canvasHeight: height,
+          insets: previewInsets,
+        );
+        break;
+      }
+    }
+
+    Uint8List bgMask;
+    if (previewInsets != null &&
+        decodedBgMask.length == colorMapWidth * colorMapHeight) {
+      bgMask = expandMaskToCanvas(
+        mask: decodedBgMask,
+        innerWidth: colorMapWidth,
+        innerHeight: colorMapHeight,
+        canvasWidth: width,
+        canvasHeight: height,
+        insets: previewInsets,
+      );
+    } else {
+      bgMask = alignMaskToExpectedOrZero(
+        decodedMask: decodedBgMask,
+        expectedPixels: width * height,
+      );
+    }
+
+    final int totalPixels = width * height;
 
     final String diagnostics =
         'pp=$perfectWidth x $perfectHeight, '
@@ -1156,7 +1242,8 @@ class _ImageEditorScreenState extends State<_ImageEditorScreen> {
         'cm=$colorMapWidth x $colorMapHeight, '
         'final=$width x $height, '
         'mapping=${mapping.length}, '
-        'mask=${decodedBgMask.length}';
+        'mask=${decodedBgMask.length}, '
+        'padding=${colorMapResult.previewPadding}';
 
     if (mapping.length != totalPixels) {
       throw _PipelineException('颜色映射解码失败 ($diagnostics)');

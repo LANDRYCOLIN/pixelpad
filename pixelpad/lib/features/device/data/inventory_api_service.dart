@@ -144,7 +144,7 @@ class InventoryTransaction {
 class InventoryApiService {
   InventoryApiService({
     http.Client? client,
-    this.baseUrl = 'http://127.0.0.1:8080',
+    this.baseUrl = 'https://pixelpad.edmounds.top',
   }) : _client = client ?? http.Client();
 
   static const Duration _timeout = Duration(seconds: 20);

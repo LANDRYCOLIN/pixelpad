@@ -2,11 +2,13 @@ import 'dart:async';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:pixelpad/features/make/data/pixelpad_api_service.dart';
+
 Future<ui.Image> renderPixelImage({
   required int width,
   required int height,
   required Uint16List mapping,
-  required List<List<int>> palette,
+  required List<PaletteColorEntry> palette,
   required Uint8List bgMask,
   Set<int>? selectedIndices,
 }) {
@@ -23,6 +25,10 @@ Future<ui.Image> renderPixelImage({
 
   final bool hasSelection =
       selectedIndices != null && selectedIndices.isNotEmpty;
+  final Map<int, List<int>> paletteByIdx = <int, List<int>>{
+    for (final PaletteColorEntry entry in palette)
+      if (entry.idx > 0) entry.idx: entry.rgba,
+  };
   final Uint8List rgba = Uint8List(total * 4);
 
   for (int i = 0; i < total; i += 1) {
@@ -35,26 +41,24 @@ Future<ui.Image> renderPixelImage({
       continue;
     }
 
-    // Backend mapping uses 1-based palette indices (0 = transparent/unmapped).
-    final int colorIndex = mapping[i];
-    if (colorIndex <= 0 || colorIndex > palette.length) {
+    final int paletteIdx = mapping[i];
+    if (paletteIdx <= 0) {
       rgba[out + 0] = 0;
       rgba[out + 1] = 0;
       rgba[out + 2] = 0;
       rgba[out + 3] = 0;
       continue;
     }
-    final int paletteIndex = colorIndex - 1;
-    if (paletteIndex >= palette.length) {
+
+    final List<int>? color = paletteByIdx[paletteIdx];
+    if (color == null) {
       rgba[out + 0] = 0;
       rgba[out + 1] = 0;
       rgba[out + 2] = 0;
-      rgba[out + 3] = 255;
+      rgba[out + 3] = 0;
       continue;
     }
-
-    final List<int> color = palette[paletteIndex];
-    if (hasSelection && !selectedIndices.contains(paletteIndex)) {
+    if (hasSelection && !selectedIndices.contains(paletteIdx)) {
       rgba[out + 0] = 0;
       rgba[out + 1] = 0;
       rgba[out + 2] = 0;
@@ -91,7 +95,7 @@ Future<Uint8List?> renderPixelPng({
   required int width,
   required int height,
   required Uint16List mapping,
-  required List<List<int>> palette,
+  required List<PaletteColorEntry> palette,
   required Uint8List bgMask,
   Set<int>? selectedIndices,
 }) async {

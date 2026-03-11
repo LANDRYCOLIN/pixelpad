@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:pixelpad/features/make/data/pixel_codec.dart';
+import 'package:pixelpad/features/make/data/pixelpad_api_service.dart';
 import 'package:pixelpad/features/make/data/pixel_renderer.dart';
 
 void main() {
@@ -39,8 +40,14 @@ void main() {
           width: 2,
           height: 2,
           mapping: Uint16List.fromList(<int>[1, 1, 1, 1, 1]),
-          palette: <List<int>>[
-            <int>[255, 255, 255, 255],
+          palette: <PaletteColorEntry>[
+            PaletteColorEntry(
+              idx: 1,
+              id: 'H2',
+              count: 4,
+              rgba: <int>[255, 255, 255, 255],
+              hex: '#ffffff',
+            ),
           ],
           bgMask: Uint8List.fromList(<int>[0, 0, 0, 0]),
         ),
@@ -58,8 +65,14 @@ void main() {
           width: 2,
           height: 2,
           mapping: Uint16List.fromList(<int>[1, 1, 1, 1]),
-          palette: <List<int>>[
-            <int>[255, 255, 255, 255],
+          palette: <PaletteColorEntry>[
+            PaletteColorEntry(
+              idx: 1,
+              id: 'H2',
+              count: 4,
+              rgba: <int>[255, 255, 255, 255],
+              hex: '#ffffff',
+            ),
           ],
           bgMask: Uint8List.fromList(<int>[0, 0, 0]),
         ),

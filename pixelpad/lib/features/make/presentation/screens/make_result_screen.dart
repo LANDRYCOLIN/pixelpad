@@ -6,10 +6,11 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:pixelpad/core/theme/app_theme.dart';
 import 'package:pixelpad/features/device/domain/services/bluetooth_service.dart';
 import 'package:pixelpad/features/make/data/pixel_renderer.dart';
+import 'package:pixelpad/features/make/data/pixelpad_api_service.dart';
 
 class MakeResultScreen extends StatefulWidget {
   final Uint16List mapping;
-  final List<List<int>> palette;
+  final List<PaletteColorEntry> palette;
   final Uint8List bgMask;
   final int width;
   final int height;
@@ -39,9 +40,9 @@ class _MakeResultScreenState extends State<MakeResultScreen> {
   List<_ColorToken> get _tokens => List<_ColorToken>.generate(
     widget.palette.length,
     (int index) => _ColorToken(
-      index: index,
-      label: '${index + 1}',
-      color: _colorFromRgba(widget.palette[index]),
+      index: widget.palette[index].idx,
+      label: widget.palette[index].id,
+      color: _colorFromRgba(widget.palette[index].rgba),
     ),
   );
 

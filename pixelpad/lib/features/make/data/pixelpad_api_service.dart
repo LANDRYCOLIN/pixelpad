@@ -13,7 +13,6 @@ class PixelPadApiService {
   Future<SessionResult> createSession({
     required Uint8List imageBytes,
     required String settingsFile,
-    required int maxColors,
     String filename = 'upload.png',
   }) async {
     final http.MultipartRequest request = http.MultipartRequest(
@@ -21,7 +20,6 @@ class PixelPadApiService {
       Uri.parse('$makeApiBaseUrl/sessions'),
     );
     request.fields['settings_file'] = settingsFile;
-    request.fields['max_colors'] = maxColors.toString();
     request.files.add(
       http.MultipartFile.fromBytes('file', imageBytes, filename: filename),
     );
@@ -40,17 +38,11 @@ class PixelPadApiService {
 
   Future<PerfectPixelResult> perfectPixel({
     required String sessionId,
-    required int maxColors,
-    double mergeThreshold = 12.0,
   }) async {
     final http.Response response = await http
         .post(
           Uri.parse('$makeApiBaseUrl/perfect_pixel'),
-          body: {
-            'session_id': sessionId,
-            'max_colors': maxColors.toString(),
-            'merge_threshold': mergeThreshold.toString(),
-          },
+          body: {'session_id': sessionId},
         )
         .timeout(_timeout);
     if (response.statusCode != 200) {
@@ -76,6 +68,7 @@ class PixelPadApiService {
 
   Future<ColorMapResult> colorMap({
     required String sessionId,
+    required int maxColors,
     String colorMapMode = 'nearest',
     bool alphaHarden = true,
   }) async {
@@ -84,6 +77,7 @@ class PixelPadApiService {
           Uri.parse('$makeApiBaseUrl/color_map'),
           body: {
             'session_id': sessionId,
+            'max_colors': maxColors.toString(),
             'color_map_mode': colorMapMode,
             'alpha_harden': alphaHarden ? 'true' : 'false',
           },
@@ -166,7 +160,7 @@ class RemoveBackgroundResult {
 class ColorMapResult {
   final int width;
   final int height;
-  final List<List<int>> palette;
+  final List<PaletteColorEntry> palette;
   final String mappingU16leBase64;
   final List<int>? previewPadding;
 
@@ -183,13 +177,29 @@ class ColorMapResult {
     return ColorMapResult(
       width: _asInt(json['width']),
       height: _asInt(json['height']),
-      palette: rawPalette.map(_toRgba).toList(),
+      palette: _toPaletteEntries(rawPalette),
       mappingU16leBase64: _asString(
         json['mapping_u16le_base64'] ?? json['mappingU16leBase64'],
       ),
       previewPadding: _toIntList(json['preview_padding']),
     );
   }
+}
+
+class PaletteColorEntry {
+  final int idx;
+  final String id;
+  final int count;
+  final List<int> rgba;
+  final String hex;
+
+  const PaletteColorEntry({
+    required this.idx,
+    required this.id,
+    required this.count,
+    required this.rgba,
+    required this.hex,
+  });
 }
 
 Map<String, dynamic> _decodeJsonBody(String body) {
@@ -266,6 +276,50 @@ List<int> _toRgba(dynamic color) {
     return <int>[r, g, b, a];
   }
   return const <int>[0, 0, 0, 255];
+}
+
+List<PaletteColorEntry> _toPaletteEntries(List<dynamic> rawPalette) {
+  return List<PaletteColorEntry>.generate(rawPalette.length, (int index) {
+    final dynamic item = rawPalette[index];
+    if (item is Map) {
+      final Map<dynamic, dynamic> map = item;
+      final int idx = _asInt(
+        map['idx'] ?? map['palette_idx'] ?? map['paletteIdx'] ?? (index + 1),
+      );
+      final List<int> rgba = _toRgba(map['rgba'] ?? item);
+      return PaletteColorEntry(
+        idx: idx,
+        id: _asString(map['id'] ?? map['num'] ?? map['label']).isNotEmpty
+            ? _asString(map['id'] ?? map['num'] ?? map['label'])
+            : '$idx',
+        count: _asInt(map['count']),
+        rgba: rgba,
+        hex: _asString(map['hex']).isNotEmpty
+            ? _asString(map['hex'])
+            : _rgbaToHex(rgba),
+      );
+    }
+
+    final List<int> rgba = _toRgba(item);
+    final int idx = index + 1;
+    return PaletteColorEntry(
+      idx: idx,
+      id: '$idx',
+      count: 0,
+      rgba: rgba,
+      hex: _rgbaToHex(rgba),
+    );
+  });
+}
+
+String _rgbaToHex(List<int> rgba) {
+  final int r = rgba.isNotEmpty ? rgba[0].clamp(0, 255).toInt() : 0;
+  final int g = rgba.length > 1 ? rgba[1].clamp(0, 255).toInt() : 0;
+  final int b = rgba.length > 2 ? rgba[2].clamp(0, 255).toInt() : 0;
+  return '#'
+      '${r.toRadixString(16).padLeft(2, '0')}'
+      '${g.toRadixString(16).padLeft(2, '0')}'
+      '${b.toRadixString(16).padLeft(2, '0')}';
 }
 
 List<int>? _toIntList(dynamic value) {
